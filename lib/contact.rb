@@ -1,14 +1,28 @@
 # frozen_string_literal: true
 
 require 'gtk4'
+require 'date'
 
 # TypedValue represents a value with a type label (e.g., "Work", "Home", "Personal")
 TypedValue = Data.define(:value, :type) do
+  DEFAULT_TYPE = 'personal'
+
   def self.from_h(hash)
     new(
       value: hash[:value] || hash['value'] || '',
-      type: hash[:type] || hash['type'] || 'personal'
+      type: hash[:type] || hash['type'] || DEFAULT_TYPE
     )
+  end
+
+  # Coerces anything the backends or the editor hand us into a TypedValue.
+  # Already-typed values pass straight through, which is what keeps repeated
+  # normalisation from wrapping a TypedValue inside another TypedValue.
+  def self.coerce(value, default_type: DEFAULT_TYPE)
+    case value
+    when TypedValue then value
+    when Hash then from_h(value)
+    else new(value: value.to_s, type: default_type)
+    end
   end
 
   def to_h
@@ -28,6 +42,14 @@ Role = Data.define(:organization, :title, :type) do
       title: hash[:title] || hash['title'] || '',
       type: hash[:type] || hash['type'] || 'work'
     )
+  end
+
+  def self.coerce(value)
+    case value
+    when Role then value
+    when Hash then from_h(value)
+    else new(organization: value.to_s, title: '', type: 'work')
+    end
   end
 
   def to_h
@@ -96,8 +118,11 @@ class Contact < GLib::Object
       .find { |v| !v.empty? } || 'Unnamed Contact'
   end
 
+  # First and last initial, which is what Adwaita::Avatar derives from a name.
   def initials
-    display_name.split.map { |p| p[0] }.take(2).join.upcase
+    display_name.split.then do |parts|
+      [parts.first, (parts.last if parts.length > 1)].compact.map { |part| part[0] }.join.upcase
+    end
   end
 
   def role_display
@@ -175,9 +200,9 @@ class Contact < GLib::Object
     legacy_val = hash[legacy_key] || hash[legacy_key.to_s]
 
     if array_val.is_a?(Array)
-      array_val.map { |v| v.is_a?(Hash) ? TypedValue.from_h(v) : TypedValue.new(value: v.to_s, type: 'personal') }
+      array_val.map { |v| TypedValue.coerce(v) }
     elsif legacy_val.is_a?(String) && !legacy_val.strip.empty?
-      [TypedValue.new(value: legacy_val, type: 'personal')]
+      [TypedValue.coerce(legacy_val)]
     else
       []
     end
@@ -189,7 +214,7 @@ class Contact < GLib::Object
     title_val = hash[:title] || hash['title']
 
     if roles_val.is_a?(Array)
-      roles_val.map { |v| Role.from_h(v) }
+      roles_val.map { |v| Role.coerce(v) }
     elsif (org_val.is_a?(String) && !org_val.strip.empty?) || (title_val.is_a?(String) && !title_val.strip.empty?)
       [Role.new(organization: org_val.to_s, title: title_val.to_s, type: 'work')]
     else

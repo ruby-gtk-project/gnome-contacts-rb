@@ -1,0 +1,18 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Entry point for the Ruby port of GNOME Contacts.
+#
+#   bin/gnome-contacts-rb            # JSON backend (default)
+#   bin/gnome-contacts-rb vcard      # directory-of-vCards backend
+
+require_relative '../lib/main'
+require_relative '../lib/json_backend'
+require_relative '../lib/vcard_backend'
+
+(ARGV[0]&.to_sym == :vcard ? Backends::VCardBackend.new : Backends::JsonBackend.new).tap do |backend|
+  warn "Using backend: #{backend.display_name}"
+  warn "Data location: #{backend.location}"
+
+  App.new(backend: backend).build.run
+end

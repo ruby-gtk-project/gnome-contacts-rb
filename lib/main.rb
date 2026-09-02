@@ -6,17 +6,49 @@ require_relative 'contact'
 require_relative 'contact_store'
 require_relative 'contact_pane'
 require_relative 'contact_list'
+require_relative 'vcard'
 
 # App is the main application class.
 #
+# Ported from upstream's src/contacts-main-window.vala and
+# data/ui/contacts-main-window.blp: a navigation split view with the contact
+# list in the sidebar and the sheet/editor in the content pane, driven by a
+# four-state machine.
+#
 class App
+  APP_ID = 'org.gnome.ContactsRb'
   NORMAL   = :normal
   SHOWING  = :showing
   CREATING = :creating
   UPDATING = :updating
 
-  def initialize(backend: nil)
+  # action name => [accelerators, handler]
+  WINDOW_ACTIONS = {
+    'new-contact' => ['<Control>n'],
+    'edit-contact' => ['<Control>e'],
+    'delete-contact' => ['Delete'],
+    'search' => ['<Control>f'],
+    'cancel' => ['Escape'],
+    'mark-favorite' => [],
+    'unmark-favorite' => []
+  }.freeze
+
+  APP_ACTIONS = {
+    'import' => ['<Control>i'],
+    'export-all' => ['<Control><Shift>e'],
+    'about' => ['F1'],
+    'quit' => ['<Control>q', '<Control>w']
+  }.freeze
+
+  # app_id/flags are injectable so tests can register a throwaway, non-unique
+  # application instead of talking to the session's real one; present: false
+  # builds the whole widget tree without ever mapping the window, so a test run
+  # does not flash a window onto the user's desktop for every example.
+  def initialize(backend: nil, app_id: APP_ID, flags: :default_flags, present: true)
     @backend = backend
+    @app_id = app_id
+    @flags = flags
+    @present = present
     @state = NORMAL
   end
 
@@ -26,12 +58,8 @@ class App
         @store = ContactStore.new(backend: @backend)
         @store.load
 
-        a.add_window(window)
-
         window.tap do |win|
-          win.title = 'Contacts'
-          win.set_default_size(800, 600)
-          win.child = toast_overlay
+          win.content = toast_overlay
 
           toast_overlay.tap do |to|
             to.child = content_box
@@ -40,28 +68,28 @@ class App
               cb.sidebar = list_pane_page
               cb.content = contact_pane_page
 
-              list_pane_page.tap do |lpp|
+              list_pane_page.tap do
                 sidebar_toolbar.tap do |st|
                   st.add_top_bar(left_header)
-                  st.add_top_bar(search_bar_container)
+                  st.add_top_bar(search_bar)
                   st.content = contacts_list.build
                   st.add_bottom_bar(actions_bar)
 
                   left_header.tap do |hb|
                     hb.pack_start(add_button)
                     hb.pack_end(primary_menu_button)
-
-                    add_button.tap do |btn|
-                      btn.signal_connect('clicked') { new_contact }
-                    end
+                    hb.pack_end(search_button)
                   end
 
-                  search_bar_container.tap do |sbc|
-                    sbc.child = filter_entry
+                  search_bar.tap do |sb|
+                    sb.child = filter_entry
+                    sb.connect_entry(filter_entry)
+                    sb.key_capture_widget = window
 
                     filter_entry.tap do |fe|
                       fe.signal_connect('search-changed') do
                         @store.query = fe.text
+                        contacts_list.update_visible_page
                       end
                     end
                   end
@@ -70,17 +98,14 @@ class App
                     ab.child = actions_box
 
                     actions_box.tap do |box|
+                      box.append(favorite_button)
                       box.append(delete_button)
-
-                      delete_button.tap do |btn|
-                        btn.signal_connect('clicked') { delete_selected_contact }
-                      end
                     end
                   end
                 end
               end
 
-              contact_pane_page.tap do |cpp|
+              contact_pane_page.tap do
                 content_toolbar.tap do |ct|
                   ct.add_top_bar(right_header)
                   ct.content = contact_pane.build
@@ -93,18 +118,6 @@ class App
                     contact_sheet_buttons.tap do |csb|
                       csb.append(edit_button)
                       csb.append(contact_menu_button)
-
-                      edit_button.tap do |btn|
-                        btn.signal_connect('clicked') { edit_contact }
-                      end
-                    end
-
-                    cancel_button.tap do |btn|
-                      btn.signal_connect('clicked') { cancel_editing }
-                    end
-
-                    done_button.tap do |btn|
-                      btn.signal_connect('clicked') { save_contact }
                     end
                   end
                 end
@@ -112,38 +125,44 @@ class App
             end
           end
 
-          @store.selection_model.tap do |sm|
-            sm.signal_connect('notify::selected') { on_selection_changed }
-          end
-
-          setup_actions
-          update_ui_for_state
-          window.present
+          @store.selection_model.signal_connect('notify::selected') { on_selection_changed }
         end
+
+        setup_actions
+        update_ui_for_state
+        show_window
       end
     end
   end
 
-  def run
-    app.run([])
-  end
+  def run = app.run([])
 
   # Memoized widget methods
 
   def app
     @app ||= begin
       Adwaita.init
-      Gtk::Application.new('org.example.contacts', :default_flags)
+      Gtk::Application.new(@app_id, @flags)
     end
   end
 
+  # Adwaita::ApplicationWindow, not Gtk::ApplicationWindow: the Gtk one draws
+  # its own default titlebar, which would sit above our two Adwaita header
+  # bars and give the window a second close button. The Adwaita window owns no
+  # titlebar of its own, and it also keeps Adwaita::Dialog (the about dialog)
+  # inside the window instead of spawning a second toplevel.
+  #
+  # (Adwaita::Application is still broken in the bindings, so the application
+  # object above stays a Gtk::Application.)
   def window
-    @window ||= Gtk::ApplicationWindow.new(app)
+    @window ||= Adwaita::ApplicationWindow.new(app).tap do |win|
+      win.title = 'Contacts'
+      win.icon_name = 'address-book-new-symbolic'
+      win.set_default_size(900, 640)
+    end
   end
 
-  def toast_overlay
-    @toast_overlay ||= Adwaita::ToastOverlay.new
-  end
+  def toast_overlay = @toast_overlay ||= Adwaita::ToastOverlay.new
 
   def content_box
     @content_box ||= Adwaita::NavigationSplitView.new.tap do |cb|
@@ -153,22 +172,22 @@ class App
     end
   end
 
-  def list_pane_page
-    @list_pane_page ||= Adwaita::NavigationPage.new(sidebar_toolbar, 'Contacts')
-  end
-
-  def sidebar_toolbar
-    @sidebar_toolbar ||= Adwaita::ToolbarView.new
-  end
-
-  def left_header
-    @left_header ||= Adwaita::HeaderBar.new
-  end
+  def list_pane_page = @list_pane_page ||= Adwaita::NavigationPage.new(sidebar_toolbar, 'Contacts')
+  def sidebar_toolbar = @sidebar_toolbar ||= Adwaita::ToolbarView.new
+  def left_header = @left_header ||= Adwaita::HeaderBar.new
 
   def add_button
     @add_button ||= Gtk::Button.new.tap do |btn|
       btn.icon_name = 'list-add-symbolic'
-      btn.tooltip_text = 'Add New Contact'
+      btn.tooltip_text = 'Add New Contact (Ctrl+N)'
+      btn.action_name = 'win.new-contact'
+    end
+  end
+
+  def search_button
+    @search_button ||= Gtk::ToggleButton.new.tap do |btn|
+      btn.icon_name = 'system-search-symbolic'
+      btn.tooltip_text = 'Search (Ctrl+F)'
     end
   end
 
@@ -183,26 +202,31 @@ class App
 
   def primary_menu
     @primary_menu ||= Gio::Menu.new.tap do |menu|
-      menu.append('_Import From File…', 'app.import')
-      menu.append('_Export All Contacts…', 'app.export-all')
+      menu.append_section(nil, Gio::Menu.new.tap do |section|
+        section.append('_Import From File…', 'app.import')
+        section.append('_Export All Contacts…', 'app.export-all')
+      end)
+
+      menu.append_section(nil, Gio::Menu.new.tap do |section|
+        section.append('_About Contacts', 'app.about')
+      end)
     end
   end
 
-  def search_bar_container
-    @search_bar_container ||= Adwaita::Bin.new.tap do |sbc|
-      sbc.add_css_class('toolbar')
+  def search_bar
+    @search_bar ||= Gtk::SearchBar.new.tap do |sb|
+      sb.show_close_button = false
     end
   end
 
   def filter_entry
     @filter_entry ||= Gtk::SearchEntry.new.tap do |fe|
       fe.placeholder_text = 'Search contacts'
+      fe.hexpand = true
     end
   end
 
-  def contacts_list
-    @contacts_list ||= ContactList.new(@store)
-  end
+  def contacts_list = @contacts_list ||= ContactList.new(@store)
 
   def actions_bar
     @actions_bar ||= Gtk::Revealer.new.tap do |ab|
@@ -214,8 +238,17 @@ class App
   def actions_box
     @actions_box ||= Gtk::Box.new(:horizontal, 6).tap do |box|
       box.add_css_class('toolbar')
+      box.homogeneous = true
       box.margin_start = 6
       box.margin_end = 6
+    end
+  end
+
+  def favorite_button
+    @favorite_button ||= Gtk::Button.new.tap do |btn|
+      btn.label = '_Favourite'
+      btn.use_underline = true
+      btn.action_name = 'win.mark-favorite'
     end
   end
 
@@ -224,16 +257,12 @@ class App
       btn.label = '_Delete'
       btn.use_underline = true
       btn.add_css_class('destructive-action')
+      btn.action_name = 'win.delete-contact'
     end
   end
 
-  def contact_pane_page
-    @contact_pane_page ||= Adwaita::NavigationPage.new(content_toolbar, 'Select a Contact')
-  end
-
-  def content_toolbar
-    @content_toolbar ||= Adwaita::ToolbarView.new
-  end
+  def contact_pane_page = @contact_pane_page ||= Adwaita::NavigationPage.new(content_toolbar, 'Select a Contact')
+  def content_toolbar = @content_toolbar ||= Adwaita::ToolbarView.new
 
   def right_header
     @right_header ||= Adwaita::HeaderBar.new.tap do |hb|
@@ -246,6 +275,7 @@ class App
       btn.label = '_Cancel'
       btn.use_underline = true
       btn.visible = false
+      btn.action_name = 'win.cancel'
     end
   end
 
@@ -267,7 +297,8 @@ class App
   def edit_button
     @edit_button ||= Gtk::Button.new.tap do |btn|
       btn.icon_name = 'document-edit-symbolic'
-      btn.tooltip_text = 'Edit Contact'
+      btn.tooltip_text = 'Edit Contact (Ctrl+E)'
+      btn.action_name = 'win.edit-contact'
     end
   end
 
@@ -279,57 +310,197 @@ class App
     end
   end
 
-  def contact_pane
-    @contact_pane ||= ContactPane.new(@store, method(:on_contact_saved))
-  end
+  def contact_pane = @contact_pane ||= ContactPane.new(@store, method(:on_contact_saved))
 
-  def setup_actions
-    # Delete contact action
-    Gio::SimpleAction.new('delete-contact', nil).tap do |action|
-      action.signal_connect('activate') { delete_selected_contact }
-      window.add_action(action)
-    end
-
-    # Mark as favorite action
-    Gio::SimpleAction.new('mark-favorite', nil).tap do |action|
-      action.signal_connect('activate') { mark_favorite }
-      window.add_action(action)
-    end
-
-    # Unmark as favorite action
-    Gio::SimpleAction.new('unmark-favorite', nil).tap do |action|
-      action.signal_connect('activate') { unmark_favorite }
-      window.add_action(action)
-    end
-  end
-
-  def update_contact_menu
-    @store.selected_contact.then do |contact|
-      if contact
-        Gio::Menu.new.tap do |menu|
-          # Favorite section
-          Gio::Menu.new.tap do |fav_section|
-            if contact.favorite?
-              fav_section.append('Unmark as Favorite', 'win.unmark-favorite')
-            else
-              fav_section.append('Mark as Favorite', 'win.mark-favorite')
-            end
-            menu.append_section(nil, fav_section)
-          end
-
-          # Delete section
-          Gio::Menu.new.tap do |del_section|
-            del_section.append('Delete Contact', 'win.delete-contact')
-            menu.append_section(nil, del_section)
-          end
-
-          contact_menu_button.menu_model = menu
-        end
-      end
+  def about_dialog
+    @about_dialog ||= Adwaita::AboutDialog.new.tap do |about|
+      about.application_name = 'Contacts'
+      about.application_icon = 'address-book-new-symbolic'
+      about.developer_name = 'The Ruby GTK Project'
+      about.version = '0.1.0'
+      about.comments = "A Ruby port of GNOME Contacts, built with gtk4 and libadwaita.\n\n" \
+                       "Shortcuts:\n" \
+                       "Ctrl+N  New contact\nCtrl+E  Edit contact\nCtrl+F  Search\n" \
+                       "Delete  Delete contact\nCtrl+I  Import vCards\nCtrl+Shift+E  Export all\n" \
+                       'Escape  Cancel editing'
+      about.website = 'https://github.com/ruby-gtk-project/gnome-contacts-rb'
+      about.license_type = Gtk::License::GPL_2_0
     end
   end
 
   private
+
+  # Parenthesised deliberately: in an endless method a trailing `if` would
+  # modify the `def` itself, so the method would never be defined at all.
+  def show_window = (window.present if @present)
+
+  def setup_actions
+    WINDOW_ACTIONS.each do |name, accels|
+      Gio::SimpleAction.new(name, nil).tap do |action|
+        action.signal_connect('activate') { send(:"action_#{name.tr('-', '_')}") }
+        window.add_action(action)
+        app.set_accels_for_action("win.#{name}", accels) if accels.any?
+      end
+    end
+
+    APP_ACTIONS.each do |name, accels|
+      Gio::SimpleAction.new(name, nil).tap do |action|
+        action.signal_connect('activate') { send(:"action_#{name.tr('-', '_')}") }
+        app.add_action(action)
+        app.set_accels_for_action("app.#{name}", accels) if accels.any?
+      end
+    end
+
+    search_button.signal_connect('toggled') { search_bar.search_mode = search_button.active? }
+    search_bar.signal_connect('notify::search-mode-enabled') { search_button.active = search_bar.search_mode? }
+    done_button.signal_connect('clicked') { save_contact }
+  end
+
+  # --- Actions ------------------------------------------------------------
+
+  def action_new_contact
+    @state = CREATING
+    contact_pane_page.title = 'New Contact'
+    right_header.show_title = true
+    contact_pane.new_contact
+    content_box.show_content = true
+    update_ui_for_state
+  end
+
+  def action_edit_contact
+    @store.selected_contact.then do |contact|
+      if contact
+        @state = UPDATING
+        contact_pane_page.title = "Editing #{contact.display_name}"
+        right_header.show_title = true
+        contact_pane.edit_contact
+        update_ui_for_state
+      end
+    end
+  end
+
+  def action_cancel
+    editing?.then do |was_editing|
+      if was_editing
+        contact_pane.stop_editing(cancel: true)
+        @state = @store.selected_contact ? SHOWING : NORMAL
+        reset_content_title
+        update_ui_for_state
+      end
+    end
+  end
+
+  def action_search
+    search_bar.search_mode = true
+    filter_entry.grab_focus
+  end
+
+  def action_delete_contact
+    @store.selected_contact.then do |contact|
+      if contact
+        @deleted_info = @store.delete_contact(contact)
+        contact_pane.show_contact(nil)
+        contacts_list.update_visible_page
+        show_undo_toast("Deleted #{contact.display_name}")
+      end
+    end
+  end
+
+  def action_mark_favorite = set_favorite(true)
+  def action_unmark_favorite = set_favorite(false)
+
+  def action_quit = app.quit
+
+  def action_about = about_dialog.present(window)
+
+  def action_import
+    Gtk::FileDialog.new.tap do |dialog|
+      dialog.title = 'Import Contacts'
+      dialog.filters = vcard_filters
+      dialog.open(window, nil) do |_, result|
+        import_file(dialog.open_finish(result))
+      rescue GLib::Error => e
+        report_dismissable('import', e)
+      end
+    end
+  end
+
+  def action_export_all
+    Gtk::FileDialog.new.tap do |dialog|
+      dialog.title = 'Export All Contacts'
+      dialog.initial_name = 'contacts.vcf'
+      dialog.filters = vcard_filters
+      dialog.save(window, nil) do |_, result|
+        export_to_file(dialog.save_finish(result))
+      rescue GLib::Error => e
+        report_dismissable('export', e)
+      end
+    end
+  end
+
+  # --- Action helpers -----------------------------------------------------
+
+  def vcard_filters
+    Gio::ListStore.new(Gtk::FileFilter).tap do |filters|
+      filters.append(Gtk::FileFilter.new.tap do |filter|
+        filter.name = 'vCard files'
+        filter.add_pattern('*.vcf')
+        filter.add_pattern('*.vcard')
+        filter.add_mime_type(VCard::MIME_TYPE)
+      end)
+    end
+  end
+
+  def import_file(file)
+    file.then do |target|
+      if target
+        @store.import(VCard.parse_all(File.read(target.path))).then do |imported|
+          contacts_list.update_visible_page
+          @store.select_contact(imported.first) if imported.any?
+          show_toast(import_summary(imported.length))
+        end
+      end
+    end
+  rescue StandardError => e
+    show_toast("Could not import: #{e.message}")
+  end
+
+  def import_summary(count)
+    case count
+    when 0 then 'No new contacts to import'
+    when 1 then 'Imported 1 contact'
+    else "Imported #{count} contacts"
+    end
+  end
+
+  def export_to_file(file)
+    file.then do |target|
+      if target
+        File.write(target.path, VCard.dump_all(@store.contacts.map(&:to_h)))
+        show_toast("Exported #{@store.n_contacts} contacts to #{File.basename(target.path)}")
+      end
+    end
+  rescue StandardError => e
+    show_toast("Could not export: #{e.message}")
+  end
+
+  # The file dialogs raise on cancellation too, which is not worth a toast.
+  def report_dismissable(operation, error)
+    show_toast("Could not #{operation}: #{error.message}") unless error.message.to_s.match?(/dismiss|cancel/i)
+  end
+
+  def set_favorite(value)
+    @store.selected_contact.then do |contact|
+      if contact
+        @store.set_favorite(contact, value)
+        update_contact_menu
+        update_ui_for_state
+        show_toast("#{contact.display_name} #{value ? 'marked as favourite' : 'removed from favourites'}")
+      end
+    end
+  end
+
+  # --- State --------------------------------------------------------------
 
   def on_selection_changed
     @store.selected_contact.then do |contact|
@@ -346,147 +517,103 @@ class App
     end
   end
 
-  def new_contact
-    @state = CREATING
-    contact_pane_page.title = 'New Contact'
-    right_header.show_title = true
-    contact_pane.new_contact
-    content_box.show_content = true
-    update_ui_for_state
-  end
-
-  def edit_contact
-    @store.selected_contact.then do |contact|
-      if contact
-        @state = UPDATING
-        contact_pane_page.title = "Editing #{contact.display_name}"
-        right_header.show_title = true
-        contact_pane.edit_contact
-        update_ui_for_state
-      end
-    end
-  end
-
-  def cancel_editing
-    contact_pane.stop_editing(cancel: true)
-    @store.selected_contact.then do |contact|
-      @state = contact ? SHOWING : NORMAL
-    end
-    contact_pane_page.title = 'Select a Contact'
-    right_header.show_title = false
-    update_ui_for_state
-  end
-
   def save_contact
     contact_pane.stop_editing(cancel: false)
-    @state = SHOWING
-    contact_pane_page.title = 'Select a Contact'
-    right_header.show_title = false
+    @state = @store.selected_contact ? SHOWING : NORMAL
+    reset_content_title
     update_ui_for_state
   end
 
   def on_contact_saved(contact_data)
     @store.selected_contact.then do |existing|
-      if existing && existing.id == contact_data[:id]
+      if existing && @state == UPDATING
         @store.update_contact(existing, **contact_data)
         contact_pane.show_contact(existing)
       else
-        @store.add_contact(**contact_data).tap do |new_contact|
-          @store.select_contact(new_contact)
+        @store.select_contact(@store.add_contact(**contact_data))
+      end
+      contacts_list.update_visible_page
+    end
+  end
+
+  def update_contact_menu
+    @store.selected_contact.then do |contact|
+      if contact
+        contact_menu_button.menu_model = Gio::Menu.new.tap do |menu|
+          menu.append_section(nil, Gio::Menu.new.tap do |section|
+            if contact.favorite?
+              section.append('Remove From Favourites', 'win.unmark-favorite')
+            else
+              section.append('Mark as Favourite', 'win.mark-favorite')
+            end
+          end)
+
+          menu.append_section(nil, Gio::Menu.new.tap do |section|
+            section.append('Delete Contact', 'win.delete-contact')
+          end)
         end
       end
     end
   end
 
-  def delete_selected_contact
-    @store.selected_contact.then do |contact|
-      if contact
-        @deleted_info = @store.delete_contact(contact)
-        contact_pane.show_contact(nil)
-        show_undo_toast("Deleted #{contact.display_name}")
-      end
-    end
+  def reset_content_title
+    contact_pane_page.title = @store.selected_contact&.display_name || 'Select a Contact'
+    right_header.show_title = false
   end
 
-  def mark_favorite
-    @store.selected_contact.then do |contact|
-      if contact
-        @store.set_favorite(contact, true)
-        update_contact_menu
-        show_toast("#{contact.display_name} marked as favorite")
-      end
-    end
-  end
-
-  def unmark_favorite
-    @store.selected_contact.then do |contact|
-      if contact
-        @store.set_favorite(contact, false)
-        update_contact_menu
-        show_toast("#{contact.display_name} unmarked as favorite")
-      end
-    end
-  end
-
-  def show_toast(message)
-    Adwaita::Toast.new(message).tap do |toast|
-      toast_overlay.add_toast(toast)
-    end
-  end
+  def show_toast(message) = toast_overlay.add_toast(Adwaita::Toast.new(message))
 
   def show_undo_toast(message)
-    Adwaita::Toast.new(message).tap do |toast|
+    toast_overlay.add_toast(Adwaita::Toast.new(message).tap do |toast|
       toast.button_label = '_Undo'
       toast.signal_connect('button-clicked') { undo_delete }
-      toast_overlay.add_toast(toast)
-    end
+    end)
   end
 
   def undo_delete
     @deleted_info.then do |info|
       if info
-        @store.restore_contact(info).tap do |contact|
-          @store.select_contact(contact)
-        end
+        @store.select_contact(@store.restore_contact(info))
+        contacts_list.update_visible_page
         @deleted_info = nil
       end
     end
   end
 
-  def editing?
-    @state == CREATING || @state == UPDATING
-  end
+  def editing? = @state == CREATING || @state == UPDATING
 
   def update_ui_for_state
     add_button.visible = !editing?
+    search_button.visible = !editing?
     primary_menu_button.visible = !editing?
 
     contact_sheet_buttons.visible = (@state == SHOWING)
     cancel_button.visible = editing?
     done_button.visible = editing?
-
-    done_button.label = (@state == CREATING) ? '_Add' : '_Done'
+    done_button.label = @state == CREATING ? '_Add' : '_Done'
 
     right_header.show_end_title_buttons = !editing?
+
+    actions_bar.reveal_child = (@state == SHOWING)
+    favorite_button.tap do |btn|
+      @store.selected_contact.then do |contact|
+        btn.label = contact&.favorite? ? '_Remove Favourite' : '_Favourite'
+        btn.action_name = contact&.favorite? ? 'win.unmark-favorite' : 'win.mark-favorite'
+      end
+    end
 
     filter_entry.sensitive = !editing?
   end
 end
 
 if __FILE__ == $PROGRAM_NAME
-  backend_type = ARGV[0]&.to_sym || :json
+  require_relative 'json_backend'
+  require_relative 'vcard_backend'
 
-  backend = case backend_type
-            when :vcard
-              require_relative 'vcard_backend'
-              Backends::VCardBackend.new
-            else
-              require_relative 'json_backend'
-              Backends::JsonBackend.new
-            end
+  (ARGV[0]&.to_sym == :vcard ? Backends::VCardBackend.new : Backends::JsonBackend.new).tap do |backend|
+    puts "Using backend: #{backend.display_name}"
+    puts "Data location: #{backend.location}"
 
-  puts "Using backend: #{backend.display_name}"
-  puts "Data location: #{backend.location}"
-
-  App.new(backend: backend).build.run
+    App.new(backend: backend).build.run
+  end
 end

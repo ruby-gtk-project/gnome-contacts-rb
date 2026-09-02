@@ -9,6 +9,8 @@ require 'securerandom'
 # When the user fills in the empty row, a new empty row appears.
 #
 class ContactEditor
+  AVATAR_SIZE = 96
+
   CONTACT_TYPES = [
     { id: 'personal', label: 'Personal' },
     { id: 'work', label: 'Work' },
@@ -18,7 +20,6 @@ class ContactEditor
 
   def initialize(contact: nil)
     @contact = contact
-    @is_new = contact.nil?
 
     # Track dynamic rows for multi-value fields
     @email_rows = []
@@ -100,9 +101,7 @@ class ContactEditor
     end
   end
 
-  def avatar
-    @avatar ||= Adwaita::Avatar.new(96, nil, true)
-  end
+  def avatar = @avatar ||= Adwaita::Avatar.new(AVATAR_SIZE, nil, true)
 
   def name_group
     @name_group ||= Adwaita::PreferencesGroup.new.tap do |group|
@@ -139,7 +138,7 @@ class ContactEditor
 
   def roles_group
     @roles_group ||= Adwaita::PreferencesGroup.new.tap do |group|
-      group.title = 'Organization'
+      group.title = 'Organisation'
     end
   end
 
@@ -268,7 +267,7 @@ class ContactEditor
 
     # Organization row
     Adwaita::EntryRow.new.tap do |row|
-      row.title = 'Organization'
+      row.title = 'Organisation'
       row.text = organization
       row.add_prefix(Gtk::Image.new(icon_name: 'building-symbolic'))
       row_data[:organization_row] = row
@@ -378,15 +377,13 @@ class ContactEditor
     rows << row_data
   end
 
+  # Each multi-value group keeps exactly one blank row at the end: as soon as
+  # the user types into the blank row, a fresh blank one is appended below it.
   def ensure_empty_row_exists(row_data, rows)
     row_data[:added_new].then do |added|
-      if !added && !row_empty?(row_data)
-        # Check if there's already an empty row
-        has_empty = rows.any? { |r| row_empty?(r) }
-        if !has_empty
-          row_data[:added_new] = true
-          yield
-        end
+      if !added && !row_empty?(row_data) && rows.none? { |row| row_empty?(row) }
+        row_data[:added_new] = true
+        yield
       end
     end
   end

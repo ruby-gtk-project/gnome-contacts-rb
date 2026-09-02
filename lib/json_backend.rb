@@ -92,6 +92,15 @@ module Backends
       File.write(@path, JSON.pretty_generate(data.merge('version' => VERSION)))
     end
 
-    def symbolize_keys(hash) = hash.transform_keys(&:to_sym)
+    # Deep, so nested values (emails, roles, ...) come back symbol-keyed and
+    # match what VCardBackend returns. Contact.from_h accepts either, but the
+    # two backends agreeing keeps callers from having to care which is in use.
+    def symbolize_keys(value)
+      case value
+      when Hash then value.to_h { |key, val| [key.to_sym, symbolize_keys(val)] }
+      when Array then value.map { |val| symbolize_keys(val) }
+      else value
+      end
+    end
   end
 end
