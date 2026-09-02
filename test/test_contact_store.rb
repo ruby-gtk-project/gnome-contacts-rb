@@ -14,7 +14,7 @@ class TestContactStore < Minitest::Test
   def test_add_contact_does_not_double_wrap_typed_values
     store.add_contact(**full_contact_attributes).then do |contact|
       assert_equal 'ada@analytical.engine', contact.emails.first.value
-      assert_equal 'work', contact.emails.first.type
+      assert_equal 'Work', contact.emails.first.type
       assert_equal 'Analytical Engine Co', contact.roles.first.organization
     end
   end
@@ -30,7 +30,7 @@ class TestContactStore < Minitest::Test
 
   def test_update_contact_writes_through_to_the_backend
     store.add_contact(name: 'Ada').then do |contact|
-      store.update_contact(contact, name: 'Augusta', emails: [{ value: 'a@b.com', type: 'work' }])
+      store.update_contact(contact, name: 'Augusta', emails: [{ value: 'a@b.com', type: 'Work' }])
       assert_equal 'Augusta', contact.name
       assert_equal 'a@b.com', store.backend.load.first[:emails].first[:value]
     end

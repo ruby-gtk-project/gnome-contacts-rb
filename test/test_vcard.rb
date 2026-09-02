@@ -38,7 +38,7 @@ class TestVCard < Minitest::Test
   # escaping intact.
   def test_round_trip_preserves_special_characters
     "Likes; semicolons, commas\nand newlines".then do |tricky|
-      VCard.parse_all(VCard.dump(contact_hash(notes: [{ value: tricky, type: 'personal' }]))).first.then do |parsed|
+      VCard.parse_all(VCard.dump(contact_hash(notes: [{ value: tricky, type: 'Personal' }]))).first.then do |parsed|
         assert_equal tricky, parsed[:notes].first[:value]
       end
     end
@@ -46,7 +46,7 @@ class TestVCard < Minitest::Test
 
   def test_long_values_are_folded_and_unfolded
     ('a' * 300).then do |long|
-      VCard.dump(contact_hash(notes: [{ value: long, type: 'personal' }])).then do |text|
+      VCard.dump(contact_hash(notes: [{ value: long, type: 'Personal' }])).then do |text|
         assert text.lines.all? { |line| line.chomp.length <= 76 }, 'lines should be folded'
         assert_equal long, VCard.parse_all(text).first[:notes].first[:value]
       end
@@ -94,12 +94,12 @@ class TestVCard < Minitest::Test
       nickname: 'Ada',
       birthday: Date.new(1815, 12, 10),
       favorite: true,
-      emails: [{ value: 'ada@analytical.engine', type: 'work' }],
-      phones: [{ value: '+44 20 7946 0100', type: 'home' }],
-      urls: [{ value: 'analytical.engine', type: 'work' }],
-      addresses: [{ value: '12 Marylebone Rd, London', type: 'home' }],
+      emails: [{ value: 'ada@analytical.engine', type: 'Work' }],
+      phones: [{ value: '+44 20 7946 0100', type: 'Home' }],
+      urls: [{ value: 'analytical.engine', type: 'Work' }],
+      addresses: [{ value: '12 Marylebone Rd, London', type: 'Home' }],
       notes: [],
-      roles: [{ organization: 'Analytical Engine Co', title: 'Mathematician', type: 'work' }]
+      roles: [{ organization: 'Analytical Engine Co', title: 'Mathematician', type: 'Work' }]
     }.merge(overrides)
   end
 end

@@ -5,7 +5,7 @@ require 'contact'
 
 class TestTypedValue < Minitest::Test
   def test_coerce_passes_typed_values_through_unchanged
-    TypedValue.new(value: 'a@b.com', type: 'work').then do |original|
+    TypedValue.new(value: 'a@b.com', type: 'Work').then do |original|
       assert_same original, TypedValue.coerce(original)
     end
   end
@@ -13,35 +13,35 @@ class TestTypedValue < Minitest::Test
   # Regression: normalising twice used to produce a TypedValue whose value was
   # the inspect string of another TypedValue.
   def test_coerce_is_idempotent
-    TypedValue.coerce(TypedValue.coerce({ value: 'a@b.com', type: 'work' })).then do |coerced|
+    TypedValue.coerce(TypedValue.coerce({ value: 'a@b.com', type: 'Work' })).then do |coerced|
       assert_equal 'a@b.com', coerced.value
-      assert_equal 'work', coerced.type
+      assert_equal 'Work', coerced.type
     end
   end
 
   def test_coerce_accepts_string_and_string_keyed_hash
     assert_equal 'x@y.z', TypedValue.coerce('x@y.z').value
-    assert_equal 'work', TypedValue.coerce({ 'value' => 'x@y.z', 'type' => 'work' }).type
+    assert_equal 'Work', TypedValue.coerce({ 'value' => 'x@y.z', 'type' => 'work' }).type
   end
 
   def test_empty_ignores_whitespace
-    assert_predicate TypedValue.new(value: '   ', type: 'work'), :empty?
-    refute_predicate TypedValue.new(value: 'a', type: 'work'), :empty?
+    assert_predicate TypedValue.new(value: '   ', type: 'Work'), :empty?
+    refute_predicate TypedValue.new(value: 'a', type: 'Work'), :empty?
   end
 end
 
 class TestRole < Minitest::Test
   def test_coerce_is_idempotent
-    Role.coerce(Role.coerce({ organization: 'Acme', title: 'Engineer', type: 'work' })).then do |role|
+    Role.coerce(Role.coerce({ organization: 'Acme', title: 'Engineer', type: 'Work' })).then do |role|
       assert_equal 'Acme', role.organization
       assert_equal 'Engineer', role.title
     end
   end
 
   def test_display_joins_title_and_organization
-    assert_equal 'Engineer at Acme', Role.new(organization: 'Acme', title: 'Engineer', type: 'work').display
-    assert_equal 'Acme', Role.new(organization: 'Acme', title: '', type: 'work').display
-    assert_equal 'Engineer', Role.new(organization: '', title: 'Engineer', type: 'work').display
+    assert_equal 'Engineer at Acme', Role.new(organization: 'Acme', title: 'Engineer', type: 'Work').display
+    assert_equal 'Acme', Role.new(organization: 'Acme', title: '', type: 'Work').display
+    assert_equal 'Engineer', Role.new(organization: '', title: 'Engineer', type: 'Work').display
   end
 end
 
@@ -50,8 +50,8 @@ class TestContact < Minitest::Test
 
   def test_display_name_falls_back_through_email_and_phone
     assert_equal 'Ada', build(name: 'Ada').display_name
-    assert_equal 'a@b.com', build(emails: [{ value: 'a@b.com', type: 'work' }]).display_name
-    assert_equal '555', build(phones: [{ value: '555', type: 'home' }]).display_name
+    assert_equal 'a@b.com', build(emails: [{ value: 'a@b.com', type: 'Work' }]).display_name
+    assert_equal '555', build(phones: [{ value: '555', type: 'Home' }]).display_name
     assert_equal 'Unnamed Contact', build.display_name
   end
 
@@ -83,7 +83,7 @@ class TestContact < Minitest::Test
   end
 
   def test_to_h_drops_empty_values
-    build(emails: [{ value: '', type: 'work' }, { value: 'a@b.com', type: 'work' }]).then do |contact|
+    build(emails: [{ value: '', type: 'Work' }, { value: 'a@b.com', type: 'Work' }]).then do |contact|
       assert_equal 1, contact.to_h[:emails].length
     end
   end

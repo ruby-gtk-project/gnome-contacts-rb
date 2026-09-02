@@ -2,32 +2,35 @@
 
 require 'adwaita'
 require 'securerandom'
+require_relative 'type_set'
+require_relative 'im_service'
+require_relative 'editable_avatar'
 
-# ContactEditor is an in-place widget for editing contacts.
+# ContactEditor is the in-place form for creating and editing a contact.
 #
-# Multi-value fields (emails, phones, etc.) always show one empty row at the end.
-# When the user fills in the empty row, a new empty row appears.
+# Ported from upstream's src/contacts-contact-editor.vala. Multi-value fields
+# always keep one blank row at the end; typing into it appends a new blank one,
+# which is how upstream lets you add an arbitrary number of emails or phones
+# without an explicit "add" button.
 #
 class ContactEditor
   AVATAR_SIZE = 96
 
-  CONTACT_TYPES = [
-    { id: 'personal', label: 'Personal' },
-    { id: 'work', label: 'Work' },
-    { id: 'home', label: 'Home' },
-    { id: 'other', label: 'Other' }
-  ].freeze
+  # Multi-value fields that are a value plus a TypeSet label.
+  TYPED_FIELDS = {
+    emails: { title: 'Add email', icon: 'mail-unread-symbolic', purpose: :email },
+    phones: { title: 'Add phone number', icon: 'phone-symbolic', purpose: :phone },
+    urls: { title: 'Website', icon: 'web-browser-symbolic', purpose: :url },
+    addresses: { title: 'Address', icon: 'mark-location-symbolic', purpose: :free_form }
+  }.freeze
 
-  def initialize(contact: nil)
+  def initialize(contact: nil, on_avatar_change: nil)
     @contact = contact
+    @on_avatar_change = on_avatar_change
+    @avatar_data = contact&.avatar
 
-    # Track dynamic rows for multi-value fields
-    @email_rows = []
-    @phone_rows = []
-    @url_rows = []
-    @address_rows = []
-    @note_rows = []
-    @role_rows = []
+    # Row bookkeeping, one array per multi-value field.
+    @rows = (TYPED_FIELDS.keys + %i[notes roles im_addresses]).to_h { |field| [field, []] }
   end
 
   def build
@@ -37,34 +40,41 @@ class ContactEditor
       c.append(emails_group)
       c.append(phones_group)
       c.append(roles_group)
+      c.append(im_group)
       c.append(urls_group)
       c.append(addresses_group)
       c.append(birthday_group)
       c.append(notes_group)
 
       avatar_section.tap do |section|
-        section.append(avatar)
-        avatar.tap do |av|
-          av.text = @contact&.display_name || ''
-          av.show_initials = true
-        end
+        section.append(editable_avatar.build)
+        editable_avatar.update(@contact)
       end
 
       name_group.tap do |group|
         group.add(name_row)
+        group.add(prefixes_row)
+        group.add(given_name_row)
+        group.add(additional_name_row)
+        group.add(family_name_row)
+        group.add(suffixes_row)
         group.add(nickname_row)
+        group.add(alias_row)
 
-        name_row.tap { |r| r.text = @contact&.name || '' }
-        nickname_row.tap { |r| r.text = @contact&.nickname || '' }
+        name_row.text = @contact&.name.to_s
+        nickname_row.text = @contact&.nickname.to_s
+        alias_row.text = @contact&.alias_name.to_s
+        structured_name_rows.each { |field, row| row.text = structured_name.public_send(field).to_s }
       end
 
-      # Initialize multi-value fields
-      init_emails
-      init_phones
+      birthday_group.tap do |group|
+        group.add(birthday_row)
+        birthday_row.text = format_birthday(@contact&.birthday)
+      end
+
+      init_typed_fields
       init_roles
-      init_urls
-      init_addresses
-      init_birthday
+      init_im_addresses
       init_notes
     end
   end
@@ -73,18 +83,18 @@ class ContactEditor
     {
       id: @contact&.id || SecureRandom.uuid,
       name: name_row.text,
+      alias_name: alias_row.text,
       nickname: nickname_row.text,
       birthday: parse_birthday(birthday_row.text),
-      emails: collect_typed_values(@email_rows),
-      phones: collect_typed_values(@phone_rows),
-      urls: collect_typed_values(@url_rows),
-      addresses: collect_typed_values(@address_rows),
-      notes: collect_typed_values(@note_rows),
-      roles: collect_roles
-    }
+      structured_name: collect_structured_name,
+      avatar: @avatar_data,
+      roles: collect_roles,
+      im_addresses: collect_im_addresses,
+      notes: collect_notes
+    }.merge(TYPED_FIELDS.keys.to_h { |field| [field, collect_typed_values(@rows[field])] })
   end
 
-  # Memoized widget methods with styles
+  # Memoized widget methods
 
   def container
     @container ||= Gtk::Box.new(:vertical, 24).tap do |c|
@@ -101,285 +111,283 @@ class ContactEditor
     end
   end
 
-  def avatar = @avatar ||= Adwaita::Avatar.new(AVATAR_SIZE, nil, true)
+  def editable_avatar = @editable_avatar ||= EditableAvatar.new(AVATAR_SIZE, method(:on_avatar_selected))
 
-  def name_group
-    @name_group ||= Adwaita::PreferencesGroup.new.tap do |group|
-      group.title = 'Name'
-    end
+  def name_group = @name_group ||= titled_group('Name')
+  def emails_group = @emails_group ||= titled_group('Email')
+  def phones_group = @phones_group ||= titled_group('Phone')
+  def roles_group = @roles_group ||= titled_group('Organisation')
+  def im_group = @im_group ||= titled_group('Instant Messaging')
+  def urls_group = @urls_group ||= titled_group('Website')
+  def addresses_group = @addresses_group ||= titled_group('Address')
+  def birthday_group = @birthday_group ||= titled_group('Birthday')
+  def notes_group = @notes_group ||= titled_group('Notes')
+
+  def name_row = @name_row ||= entry_row('Full Name', icon: 'avatar-default-symbolic') { update_avatar_text }
+  def prefixes_row = @prefixes_row ||= entry_row('Title')
+  def given_name_row = @given_name_row ||= entry_row('First Name')
+  def additional_name_row = @additional_name_row ||= entry_row('Middle Name')
+  def family_name_row = @family_name_row ||= entry_row('Last Name')
+  def suffixes_row = @suffixes_row ||= entry_row('Suffix')
+  def nickname_row = @nickname_row ||= entry_row('Nickname', icon: 'avatar-default-symbolic')
+  def alias_row = @alias_row ||= entry_row('Alias', icon: 'avatar-default-symbolic')
+  def birthday_row = @birthday_row ||= entry_row('Birthday (YYYY-MM-DD)', icon: 'birthday-symbolic')
+
+  # The five N components, in the order the editor shows them.
+  def structured_name_rows
+    @structured_name_rows ||= {
+      prefixes: prefixes_row, given: given_name_row, additional: additional_name_row,
+      family: family_name_row, suffixes: suffixes_row
+    }
   end
 
-  def name_row
-    @name_row ||= Adwaita::EntryRow.new.tap do |row|
-      row.title = 'Full Name'
-      row.add_prefix(Gtk::Image.new(icon_name: 'avatar-default-symbolic'))
-      row.signal_connect('changed') { update_avatar_from_name }
-    end
-  end
-
-  def nickname_row
-    @nickname_row ||= Adwaita::EntryRow.new.tap do |row|
-      row.title = 'Nickname'
-      row.add_prefix(Gtk::Image.new(icon_name: 'avatar-default-symbolic'))
-    end
-  end
-
-  def emails_group
-    @emails_group ||= Adwaita::PreferencesGroup.new.tap do |group|
-      group.title = 'Email'
-    end
-  end
-
-  def phones_group
-    @phones_group ||= Adwaita::PreferencesGroup.new.tap do |group|
-      group.title = 'Phone'
-    end
-  end
-
-  def roles_group
-    @roles_group ||= Adwaita::PreferencesGroup.new.tap do |group|
-      group.title = 'Organisation'
-    end
-  end
-
-  def urls_group
-    @urls_group ||= Adwaita::PreferencesGroup.new.tap do |group|
-      group.title = 'Website'
-    end
-  end
-
-  def addresses_group
-    @addresses_group ||= Adwaita::PreferencesGroup.new.tap do |group|
-      group.title = 'Address'
-    end
-  end
-
-  def birthday_group
-    @birthday_group ||= Adwaita::PreferencesGroup.new.tap do |group|
-      group.title = 'Birthday'
-    end
-  end
-
-  def birthday_row
-    @birthday_row ||= Adwaita::EntryRow.new.tap do |row|
-      row.title = 'Birthday'
-      row.add_prefix(Gtk::Image.new(icon_name: 'birthday-symbolic'))
-    end
-  end
-
-  def notes_group
-    @notes_group ||= Adwaita::PreferencesGroup.new.tap do |group|
-      group.title = 'Notes'
-    end
+  def group_for(field)
+    { emails: emails_group, phones: phones_group, urls: urls_group,
+      addresses: addresses_group }.fetch(field)
   end
 
   private
 
-  # Multi-value field initialization
-
-  def init_emails
-    (@contact&.emails || []).each { |email| add_email_row(email.value, email.type) }
-    add_email_row('', 'personal') # Empty row for adding new
+  def titled_group(title)
+    Adwaita::PreferencesGroup.new.tap do |group|
+      group.title = title
+    end
   end
 
-  def init_phones
-    (@contact&.phones || []).each { |phone| add_phone_row(phone.value, phone.type) }
-    add_phone_row('', 'personal')
+  def entry_row(title, icon: nil, &on_change)
+    Adwaita::EntryRow.new.tap do |row|
+      row.title = title
+      row.add_prefix(Gtk::Image.new(icon_name: icon)) if icon
+      row.signal_connect('changed') { on_change.call } if on_change
+    end
+  end
+
+  def structured_name = @contact&.structured_name || StructuredName.empty
+
+  # --- Field initialisation ----------------------------------------------
+
+  def init_typed_fields
+    TYPED_FIELDS.each_key do |field|
+      Array(@contact&.public_send(field)).each { |v| add_typed_row(field, v.value, v.type) }
+      add_typed_row(field, '', TypeSet.for_field(field).default.display_name)
+    end
   end
 
   def init_roles
-    (@contact&.roles || []).each { |role| add_role_row(role.organization, role.title, role.type) }
-    add_role_row('', '', 'work')
+    Array(@contact&.roles).each { |role| add_role_row(role.organization, role.title) }
+    add_role_row('', '')
   end
 
-  def init_urls
-    (@contact&.urls || []).each { |url| add_url_row(url.value, url.type) }
-    add_url_row('', 'personal')
-  end
-
-  def init_addresses
-    (@contact&.addresses || []).each { |addr| add_address_row(addr.value, addr.type) }
-    add_address_row('', 'home')
-  end
-
-  def init_birthday
-    birthday_group.add(birthday_row)
-    birthday_row.text = format_birthday(@contact&.birthday)
+  def init_im_addresses
+    Array(@contact&.im_addresses).each { |im| add_im_row(im.value, im.service) }
+    add_im_row('', 'jabber')
   end
 
   def init_notes
-    (@contact&.notes || []).each { |note| add_note_row(note.value) }
+    Array(@contact&.notes).each { |note| add_note_row(note.value) }
     add_note_row('')
   end
 
-  # Row creation methods
+  # --- Row builders -------------------------------------------------------
 
-  def add_email_row(value, type)
-    create_typed_row(
-      group: emails_group,
-      rows: @email_rows,
-      value: value,
-      type: type,
-      title: 'Add email',
-      icon: 'mail-unread-symbolic',
-      input_purpose: :email
-    ) { add_email_row('', 'personal') }
-  end
+  def add_typed_row(field, value, type)
+    TypeSet.for_field(field).then do |type_set|
+      { entry_row: nil, type: type, added_new: false }.tap do |row_data|
+        Adwaita::EntryRow.new.tap do |row|
+          row.title = TYPED_FIELDS[field][:title]
+          row.text = value
+          row.input_purpose = TYPED_FIELDS[field][:purpose]
+          row.add_prefix(Gtk::Image.new(icon_name: TYPED_FIELDS[field][:icon]))
+          row_data[:entry_row] = row
 
-  def add_phone_row(value, type)
-    create_typed_row(
-      group: phones_group,
-      rows: @phone_rows,
-      value: value,
-      type: type,
-      title: 'Add phone number',
-      icon: 'phone-symbolic',
-      input_purpose: :phone
-    ) { add_phone_row('', 'personal') }
-  end
-
-  def add_url_row(value, type)
-    create_typed_row(
-      group: urls_group,
-      rows: @url_rows,
-      value: value,
-      type: type,
-      title: 'Website',
-      icon: 'web-browser-symbolic',
-      input_purpose: :url
-    ) { add_url_row('', 'personal') }
-  end
-
-  def add_address_row(value, type)
-    create_typed_row(
-      group: addresses_group,
-      rows: @address_rows,
-      value: value,
-      type: type,
-      title: 'Address',
-      icon: 'mark-location-symbolic',
-      input_purpose: :free_form
-    ) { add_address_row('', 'home') }
-  end
-
-  def add_role_row(organization, title, type)
-    row_data = { organization_row: nil, title_row: nil, type: type, added_new: false }
-
-    # Organization row
-    Adwaita::EntryRow.new.tap do |row|
-      row.title = 'Organisation'
-      row.text = organization
-      row.add_prefix(Gtk::Image.new(icon_name: 'building-symbolic'))
-      row_data[:organization_row] = row
-
-      row.signal_connect('changed') do
-        ensure_empty_row_exists(row_data, @role_rows) { add_role_row('', '', 'work') }
-      end
-
-      roles_group.add(row)
-    end
-
-    # Title/Role row
-    Adwaita::EntryRow.new.tap do |row|
-      row.title = 'Role'
-      row.text = title
-      row_data[:title_row] = row
-
-      row.signal_connect('changed') do
-        ensure_empty_row_exists(row_data, @role_rows) { add_role_row('', '', 'work') }
-      end
-
-      roles_group.add(row)
-    end
-
-    @role_rows << row_data
-  end
-
-  def add_note_row(value)
-    row_data = { text_view: nil, added_new: false }
-
-    Adwaita::PreferencesRow.new.tap do |row|
-      row.activatable = false
-
-      Gtk::Box.new(:horizontal, 12).tap do |box|
-        box.margin_top = 12
-        box.margin_bottom = 12
-        box.margin_start = 12
-        box.margin_end = 12
-
-        Gtk::Image.new.tap do |icon|
-          icon.icon_name = 'notepad-symbolic'
-          icon.valign = :start
-          icon.add_css_class('dim-label')
-          box.append(icon)
-        end
-
-        Gtk::ScrolledWindow.new.tap do |sw|
-          sw.hscrollbar_policy = :never
-          sw.min_content_height = 80
-          sw.hexpand = true
-
-          Gtk::TextView.new.tap do |tv|
-            tv.wrap_mode = :word_char
-            tv.buffer.text = value
-            row_data[:text_view] = tv
-
-            tv.buffer.signal_connect('changed') do
-              ensure_empty_row_exists(row_data, @note_rows) { add_note_row('') }
+          row.add_suffix(type_dropdown(type_set, row_data))
+          row.signal_connect('changed') do
+            ensure_trailing_blank_row(row_data, @rows[field]) do
+              add_typed_row(field, '', type_set.default.display_name)
             end
-
-            sw.child = tv
           end
 
-          box.append(sw)
+          group_for(field).add(row)
         end
 
-        row.child = box
+        @rows[field] << row_data
       end
-
-      notes_group.add(row)
     end
-
-    @note_rows << row_data
   end
 
-  # Helper to create a typed entry row with type dropdown and prefix icon
-  def create_typed_row(group:, rows:, value:, type:, title:, icon:, input_purpose:, &on_new_row)
-    row_data = { entry_row: nil, type: type, added_new: false }
+  # A dropdown over the field's TypeSet, whose last entry ("Other…") swaps in
+  # an entry for a custom label — upstream's TypeDescriptor.custom.
+  def type_dropdown(type_set, row_data)
+    Gtk::DropDown.new.tap do |dropdown|
+      dropdown.model = Gtk::StringList.new(labels_including(type_set, row_data[:type]))
+      dropdown.valign = :center
+      dropdown.selected = selected_index(type_set, row_data[:type])
 
+      dropdown.signal_connect('notify::selected') do
+        dropdown.model.get_string(dropdown.selected).then do |label|
+          if label == TypeSet::OTHER_LABEL
+            prompt_for_custom_label(type_set, row_data, dropdown)
+          else
+            row_data[:type] = label
+          end
+        end
+      end
+    end
+  end
+
+  # A custom label the contact already carries has to appear in the model, or
+  # the dropdown could not show it.
+  def labels_including(type_set, type)
+    type_set.index_of(type) ? type_set.labels : type_set.descriptors.map(&:display_name) + [type, TypeSet::OTHER_LABEL]
+  end
+
+  def selected_index(type_set, type)
+    type_set.index_of(type) || type_set.descriptors.length
+  end
+
+  # Shown when the user picks "Other…": a small dialog collecting the label.
+  def prompt_for_custom_label(type_set, row_data, dropdown)
+    Adwaita::AlertDialog.new('Custom Type', 'Enter a label for this field').tap do |dialog|
+      custom_label_entry(row_data).tap do |entry|
+        dialog.extra_child = entry
+        dialog.add_response('cancel', '_Cancel')
+        dialog.add_response('save', '_Save')
+        dialog.default_response = 'save'
+        dialog.set_response_appearance('save', Adwaita::ResponseAppearance::SUGGESTED)
+
+        dialog.signal_connect('response') do |_, response|
+          if response == 'save' && !entry.text.strip.empty?
+            row_data[:type] = entry.text.strip
+            apply_custom_label(type_set, dropdown, row_data)
+          else
+            dropdown.selected = selected_index(type_set, row_data[:type])
+          end
+        end
+
+        dialog.present(dropdown.root)
+      end
+    end
+  end
+
+  def custom_label_entry(row_data)
+    Gtk::Entry.new.tap do |entry|
+      entry.text = row_data[:type].to_s
+      entry.margin_start = 12
+      entry.margin_end = 12
+      entry.margin_top = 6
+      entry.margin_bottom = 6
+    end
+  end
+
+  # Puts the custom label into the dropdown's model so it is what the user sees.
+  def apply_custom_label(type_set, dropdown, row_data)
+    (type_set.descriptors.map(&:display_name) + [row_data[:type], TypeSet::OTHER_LABEL]).then do |labels|
+      dropdown.model = Gtk::StringList.new(labels)
+      dropdown.selected = labels.length - 2
+    end
+  end
+
+  def add_role_row(organization, title)
+    { organization_row: nil, title_row: nil, added_new: false }.tap do |row_data|
+      row_data[:organization_row] = role_entry('Organisation', organization, 'building-symbolic', row_data)
+      row_data[:title_row] = role_entry('Role', title, nil, row_data)
+      @rows[:roles] << row_data
+    end
+  end
+
+  def role_entry(title, value, icon, row_data)
     Adwaita::EntryRow.new.tap do |row|
       row.title = title
       row.text = value
-      row.input_purpose = input_purpose
-      row.add_prefix(Gtk::Image.new(icon_name: icon))
-      row_data[:entry_row] = row
+      row.add_prefix(Gtk::Image.new(icon_name: icon)) if icon
+      row.signal_connect('changed') do
+        ensure_trailing_blank_row(row_data, @rows[:roles]) { add_role_row('', '') }
+      end
+      roles_group.add(row)
+    end
+  end
 
-      # Type dropdown as suffix
-      Gtk::DropDown.new.tap do |dropdown|
-        dropdown.model = Gtk::StringList.new(CONTACT_TYPES.map { |t| t[:label] })
-        dropdown.selected = CONTACT_TYPES.index { |t| t[:id] == type } || 0
-        dropdown.valign = :center
+  def add_im_row(value, service)
+    { entry_row: nil, service: service, added_new: false }.tap do |row_data|
+      Adwaita::EntryRow.new.tap do |row|
+        row.title = 'Add IM address'
+        row.text = value
+        row.add_prefix(Gtk::Image.new(icon_name: 'chat-symbolic'))
+        row_data[:entry_row] = row
+        row.add_suffix(im_service_dropdown(row_data))
 
-        dropdown.signal_connect('notify::selected') do
-          row_data[:type] = CONTACT_TYPES[dropdown.selected][:id]
+        row.signal_connect('changed') do
+          ensure_trailing_blank_row(row_data, @rows[:im_addresses]) { add_im_row('', 'jabber') }
         end
 
-        row.add_suffix(dropdown)
+        im_group.add(row)
       end
 
-      row.signal_connect('changed') do
-        ensure_empty_row_exists(row_data, rows, &on_new_row)
-      end
-
-      group.add(row)
+      @rows[:im_addresses] << row_data
     end
-
-    rows << row_data
   end
+
+  def im_service_dropdown(row_data)
+    Gtk::DropDown.new.tap do |dropdown|
+      ImService.identifiers.then do |ids|
+        dropdown.model = Gtk::StringList.new(ids.map { |id| ImService.display_name(id) })
+        dropdown.valign = :center
+        dropdown.selected = ids.index(row_data[:service]) || 0
+        dropdown.signal_connect('notify::selected') { row_data[:service] = ids[dropdown.selected] }
+      end
+    end
+  end
+
+  def add_note_row(value)
+    { text_view: nil, added_new: false }.tap do |row_data|
+      Adwaita::PreferencesRow.new.tap do |row|
+        row.activatable = false
+        row.child = note_box(value, row_data)
+        notes_group.add(row)
+      end
+
+      @rows[:notes] << row_data
+    end
+  end
+
+  def note_box(value, row_data)
+    Gtk::Box.new(:horizontal, 12).tap do |box|
+      box.margin_top = 12
+      box.margin_bottom = 12
+      box.margin_start = 12
+      box.margin_end = 12
+
+      box.append(Gtk::Image.new.tap do |icon|
+        icon.icon_name = 'notepad-symbolic'
+        icon.valign = :start
+        icon.add_css_class('dim-label')
+      end)
+
+      box.append(Gtk::ScrolledWindow.new.tap do |sw|
+        sw.hscrollbar_policy = :never
+        sw.min_content_height = 80
+        sw.hexpand = true
+        sw.child = note_view(value, row_data)
+      end)
+    end
+  end
+
+  def note_view(value, row_data)
+    Gtk::TextView.new.tap do |tv|
+      tv.wrap_mode = :word_char
+      tv.buffer.text = value
+      row_data[:text_view] = tv
+      tv.buffer.signal_connect('changed') do
+        ensure_trailing_blank_row(row_data, @rows[:notes]) { add_note_row('') }
+      end
+    end
+  end
+
+  # --- Blank-row bookkeeping ---------------------------------------------
 
   # Each multi-value group keeps exactly one blank row at the end: as soon as
   # the user types into the blank row, a fresh blank one is appended below it.
-  def ensure_empty_row_exists(row_data, rows)
+  def ensure_trailing_blank_row(row_data, rows)
     row_data[:added_new].then do |added|
       if !added && !row_empty?(row_data) && rows.none? { |row| row_empty?(row) }
         row_data[:added_new] = true
@@ -400,47 +408,73 @@ class ContactEditor
     end
   end
 
-  # Data collection
+  # --- Collection ---------------------------------------------------------
 
   def collect_typed_values(rows)
     rows.filter_map do |row_data|
-      if row_data[:entry_row]
-        value = row_data[:entry_row].text.strip
-        value.empty? ? nil : { value: value, type: row_data[:type] }
-      elsif row_data[:text_view]
-        value = row_data[:text_view].buffer.text.strip
-        value.empty? ? nil : { value: value, type: 'personal' }
+      row_data[:entry_row].text.strip.then do |value|
+        { value: value, type: row_data[:type] } unless value.empty?
+      end
+    end
+  end
+
+  def collect_im_addresses
+    @rows[:im_addresses].filter_map do |row_data|
+      row_data[:entry_row].text.strip.then do |value|
+        { value: value, service: row_data[:service] } unless value.empty?
+      end
+    end
+  end
+
+  def collect_notes
+    @rows[:notes].filter_map do |row_data|
+      row_data[:text_view].buffer.text.strip.then do |value|
+        { value: value, type: 'Home' } unless value.empty?
       end
     end
   end
 
   def collect_roles
-    @role_rows.filter_map do |row_data|
-      org = row_data[:organization_row].text.strip
-      title = row_data[:title_row].text.strip
-      (org.empty? && title.empty?) ? nil : { organization: org, title: title, type: row_data[:type] }
+    @rows[:roles].filter_map do |row_data|
+      [row_data[:organization_row].text.strip, row_data[:title_row].text.strip].then do |org, title|
+        { organization: org, title: title, type: 'Work' } unless org.empty? && title.empty?
+      end
     end
   end
 
-  def update_avatar_from_name
-    avatar.text = name_row.text
+  def collect_structured_name
+    structured_name_rows.to_h { |field, row| [field, row.text.strip] }
   end
 
+  # --- Avatar -------------------------------------------------------------
+
+  def on_avatar_selected(avatar)
+    @avatar_data = avatar
+    editable_avatar.set_avatar(avatar)
+    @on_avatar_change&.call(avatar)
+  end
+
+  def update_avatar_text = editable_avatar.text = name_row.text
+
   def format_birthday(birthday)
-    birthday.then do |b|
-      if b.is_a?(Date)
-        b.iso8601
-      elsif b.is_a?(String)
-        b
-      else
-        ''
-      end
-    end || ''
+    case birthday
+    when Date then birthday.iso8601
+    when String then birthday
+    else ''
+    end
   end
 
   def parse_birthday(text)
     text.to_s.strip.then do |t|
-      t.empty? ? nil : (Date.parse(t) rescue t)
+      if t.empty?
+        nil
+      else
+        begin
+          Date.parse(t)
+        rescue Date::Error
+          t
+        end
+      end
     end
   end
 end

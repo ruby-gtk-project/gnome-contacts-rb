@@ -3,16 +3,59 @@
 
 # Entry point for the Ruby port of GNOME Contacts.
 #
-#   bin/gnome-contacts-rb            # JSON backend (default)
-#   bin/gnome-contacts-rb vcard      # directory-of-vCards backend
+# The options mirror upstream's src/contacts-app.vala:
+#
+#   -e, --email ADDRESS      Show contact with this email address
+#   -i, --individual ID      Show contact with this individual id
+#   -s, --search TERM        Show contacts with the given filter
+#   -v, --version            Show the current version of Contacts
+#
+# plus a backend switch, which upstream does not need because it talks to
+# Evolution Data Server.
+
+require 'optparse'
 
 require_relative '../lib/main'
 require_relative '../lib/json_backend'
 require_relative '../lib/vcard_backend'
+require_relative '../lib/settings'
+require_relative '../lib/setup_window'
 
-(ARGV[0]&.to_sym == :vcard ? Backends::VCardBackend.new : Backends::JsonBackend.new).tap do |backend|
-  warn "Using backend: #{backend.display_name}"
-  warn "Data location: #{backend.location}"
+VERSION = '0.1.0'
 
-  App.new(backend: backend).build.run
+options = { backend: :json }
+
+OptionParser.new do |parser|
+  parser.banner = 'Usage: gnome-contacts-rb [OPTION…] [json|vcard]'
+  parser.on('-e', '--email ADDRESS', 'Show contact with this email address') { |v| options[:email] = v }
+  parser.on('-i', '--individual ID', 'Show contact with this individual id') { |v| options[:individual] = v }
+  parser.on('-s', '--search TERM', 'Show contacts with the given filter') { |v| options[:search] = v }
+  parser.on('-b', '--backend NAME', %w[json vcard], 'Storage backend (json, vcard)') { |v| options[:backend] = v.to_sym }
+  parser.on('-v', '--version', 'Show the current version of Contacts') do
+    puts "gnome-contacts-rb #{VERSION}"
+    exit 0
+  end
+end.parse!
+
+# A bare positional argument still selects the backend, as it did before the
+# options existed.
+options[:backend] = ARGV.first.to_sym if %w[json vcard].include?(ARGV.first)
+
+BACKENDS = {
+  json: -> { Backends::JsonBackend.new },
+  vcard: -> { Backends::VCardBackend.new }
+}.freeze
+
+Settings.new.then do |settings|
+  BACKENDS.fetch(options[:backend]).call.then do |backend|
+    warn "Using backend: #{backend.display_name}"
+    warn "Data location: #{backend.location}"
+
+    App.new(backend: backend, settings: settings,
+            startup_query: options[:search] || options[:email],
+            startup_contact_id: options[:individual],
+            # On first run the setup wizard offers these instead of opening
+            # straight into the main window.
+            setup_backends: BACKENDS.values.map(&:call)).build.run
+  end
 end

@@ -3,6 +3,7 @@
 require 'adwaita'
 require 'uri'
 require_relative 'contact_sheet_row'
+require_relative 'im_service'
 
 # ContactSheet displays the stored information of a single contact.
 #
@@ -13,6 +14,7 @@ require_relative 'contact_sheet_row'
 class ContactSheet
   PROFILE_SIZE = 128
 
+  # field => [group title, icon, row-builder]
   def initialize(contact)
     @contact = contact
   end
@@ -23,6 +25,7 @@ class ContactSheet
       c.append(roles_group)
       c.append(emails_group)
       c.append(phones_group)
+      c.append(im_group)
       c.append(urls_group)
       c.append(addresses_group)
       c.append(birthday_group)
@@ -37,6 +40,7 @@ class ContactSheet
         avatar.tap do |av|
           av.text = @contact.display_name
           av.show_initials = true
+          av.custom_image = @contact.avatar&.texture
         end
 
         name_label.label = @contact.display_name
@@ -45,13 +49,13 @@ class ContactSheet
 
       roles_group.tap do |group|
         rows_for(@contact.roles, icon: 'building-symbolic') do |role|
-          ContactSheetRow.new(role.display, type_label(role.type), icon: 'building-symbolic')
+          ContactSheetRow.new(role.display, role.type, icon: 'building-symbolic')
         end.each { |row| group.add(row) }
       end
 
       emails_group.tap do |group|
         rows_for(@contact.emails, icon: 'mail-unread-symbolic') do |email|
-          ContactSheetRow.new(email.value, type_label(email.type), icon: 'mail-unread-symbolic')
+          ContactSheetRow.new(email.value, email.type, icon: 'mail-unread-symbolic')
                          .add_button('mail-send-symbolic', "Send email to #{email.value}") do
                            open_uri("mailto:#{email.value}")
                          end
@@ -60,16 +64,22 @@ class ContactSheet
 
       phones_group.tap do |group|
         rows_for(@contact.phones, icon: 'phone-symbolic') do |phone|
-          ContactSheetRow.new(phone.value, type_label(phone.type), icon: 'phone-symbolic')
+          ContactSheetRow.new(phone.value, phone.type, icon: 'phone-symbolic')
                          .add_button('chat-symbolic', "Call #{phone.value}") do
                            open_uri("tel:#{phone.value.gsub(/[^+0-9]/, '')}")
                          end
         end.each { |row| group.add(row) }
       end
 
+      im_group.tap do |group|
+        rows_for(@contact.im_addresses, icon: 'chat-symbolic') do |im|
+          ContactSheetRow.new(im.value, im.service_display_name, icon: 'chat-symbolic')
+        end.each { |row| group.add(row) }
+      end
+
       urls_group.tap do |group|
         rows_for(@contact.urls, icon: 'web-browser-symbolic') do |url|
-          ContactSheetRow.new(url.value, type_label(url.type), icon: 'web-browser-symbolic')
+          ContactSheetRow.new(url.value, url.type, icon: 'web-browser-symbolic')
                          .add_button('external-link-symbolic', 'Visit website') do
                            open_uri(absolute_url(url.value))
                          end
@@ -78,7 +88,7 @@ class ContactSheet
 
       addresses_group.tap do |group|
         rows_for(@contact.addresses, icon: 'mark-location-symbolic') do |address|
-          ContactSheetRow.new(address.value, type_label(address.type), icon: 'mark-location-symbolic')
+          ContactSheetRow.new(address.value, address.type, icon: 'mark-location-symbolic')
                          .add_button('map-symbolic', 'Show on the map') do
                            open_uri("https://www.openstreetmap.org/search?query=#{URI.encode_www_form_component(address.value)}")
                          end
@@ -139,6 +149,7 @@ class ContactSheet
   def roles_group = @roles_group ||= titled_group('Organisation')
   def emails_group = @emails_group ||= titled_group('Email')
   def phones_group = @phones_group ||= titled_group('Phone')
+  def im_group = @im_group ||= titled_group('Instant Messaging')
   def urls_group = @urls_group ||= titled_group('Website')
   def addresses_group = @addresses_group ||= titled_group('Address')
   def birthday_group = @birthday_group ||= titled_group('Birthday')
@@ -170,8 +181,6 @@ class ContactSheet
   end
 
   def birthday_subtitle = @contact.birthday_today? ? 'Their birthday is today! 🎉' : nil
-
-  def type_label(type) = type.to_s.capitalize
 
   def open_uri(uri)
     Gtk::UriLauncher.new(uri).launch(nil, nil) do |launcher, result|

@@ -3,6 +3,7 @@
 require 'adwaita'
 require_relative 'contact_sheet'
 require_relative 'contact_editor'
+require_relative 'link_suggestion_grid'
 
 # ContactPane is the right-hand pane showing contact details.
 #
@@ -21,12 +22,15 @@ require_relative 'contact_editor'
 class ContactPane < Adwaita::Bin
   attr_reader :editor, :sheet
 
-  def initialize(store, on_save_callback)
+  def initialize(store, on_save_callback, on_link: nil, on_reject: nil)
     super()
     self.hexpand = true
     self.vexpand = true
     @store = store
     @on_save = on_save_callback
+    @on_link = on_link
+    @on_reject = on_reject
+    @suggestion_grids = []
     @contact = nil
     @editing = false
     @sheet = nil
@@ -43,7 +47,14 @@ class ContactPane < Adwaita::Bin
         s.add_named(contact_editor_page, 'contact-editor-page')
         s.visible_child_name = 'none-selected-page'
 
-        contact_sheet_page.child = contact_sheet_clamp
+        contact_sheet_page.tap do |csp|
+          csp.child = sheet_box
+
+          sheet_box.tap do |sb|
+            sb.append(contact_sheet_clamp)
+            sb.append(suggestions_box)
+          end
+        end
 
         contact_editor_page.tap do |cep|
           cep.child = contact_editor_clamp
@@ -56,13 +67,17 @@ class ContactPane < Adwaita::Bin
 
   def editing? = @editing
 
-  def show_contact(contact)
+  # suggestions are other contacts that look like the same person; each gets a
+  # LinkSuggestionGrid under the sheet, as upstream does.
+  def show_contact(contact, suggestions: [])
     @contact = contact
     remove_contact_sheet
+    remove_suggestions
 
     contact.then do |c|
       if c
         ContactSheet.new(c).tap { |s| @sheet = s; contact_sheet_clamp.child = s.build }
+        add_suggestions(suggestions)
         stack.visible_child_name = 'contact-sheet-page'
         scroll_to_top(contact_sheet_page)
       else
@@ -146,6 +161,13 @@ class ContactPane < Adwaita::Bin
   end
 
   def contact_editor_box = @contact_editor_box ||= Gtk::Box.new(:vertical, 0)
+  def sheet_box = @sheet_box ||= Gtk::Box.new(:vertical, 0)
+
+  def suggestions_box
+    @suggestions_box ||= Adwaita::Clamp.new.tap do |c|
+      c.maximum_size = 520
+    end
+  end
 
   private
 
@@ -173,6 +195,24 @@ class ContactPane < Adwaita::Bin
       scroller.vadjustment.value = scroller.vadjustment.lower
       false
     end
+  end
+
+  # Upstream shows one suggestion at a time; showing the strongest match keeps
+  # the sheet from turning into a wall of prompts.
+  def add_suggestions(suggestions)
+    Array(suggestions).first.then do |suggestion|
+      if suggestion && @on_link
+        LinkSuggestionGrid.new(suggestion, @on_link, @on_reject).tap do |grid|
+          @suggestion_grids << grid
+          suggestions_box.child = grid.build
+        end
+      end
+    end
+  end
+
+  def remove_suggestions
+    suggestions_box.child = nil
+    @suggestion_grids.clear
   end
 
   def remove_contact_sheet

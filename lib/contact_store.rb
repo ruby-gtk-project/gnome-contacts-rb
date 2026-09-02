@@ -2,6 +2,7 @@
 
 require 'gtk4'
 require 'securerandom'
+require 'set'
 require_relative 'contact'
 require_relative 'backend'
 require_relative 'json_backend'
@@ -15,15 +16,17 @@ require_relative 'vcard_backend'
 #   ListStore (kept sorted) -> FilterListModel -> SingleSelection
 #
 class ContactStore
-  MULTI_VALUE_FIELDS = %i[emails phones urls addresses notes].freeze
-  CONTACT_FIELDS = (%i[name nickname birthday favorite roles] + MULTI_VALUE_FIELDS).freeze
+  MULTI_VALUE_FIELDS = Contact::MULTI_VALUE_FIELDS
+  CONTACT_FIELDS = (Contact::ALL_FIELDS - %i[favorite] + %i[favorite]).freeze
 
   attr_reader :backend, :list_store
+  attr_accessor :sort_on_surname
 
-  def initialize(backend: nil)
+  def initialize(backend: nil, sort_on_surname: false)
     @backend = backend || Backends::JsonBackend.new
     @list_store = Gio::ListStore.new(Contact)
     @query = ''
+    @sort_on_surname = sort_on_surname
   end
 
   def load
@@ -111,6 +114,54 @@ class ContactStore
 
   def selected_contact = selection_model.selected_item
 
+  # --- Selection mode -----------------------------------------------------
+  #
+  # The sidebar swaps its Gtk::SingleSelection for a Gtk::MultiSelection when
+  # selection mode is on, which is how upstream's main window drives its
+  # "export / link / delete marked contacts" actions.
+
+  def multi_selection_model
+    @multi_selection_model ||= Gtk::MultiSelection.new(filter_model)
+  end
+
+  def marked_contacts
+    (0...multi_selection_model.n_items).select { |i| multi_selection_model.selected?(i) }
+                                       .map { |i| multi_selection_model.get_item(i) }
+  end
+
+  def unmark_all = multi_selection_model.unselect_all
+
+  # --- Link suggestions ---------------------------------------------------
+
+  # Contacts that look like the same person as the given one: upstream
+  # suggests linking when an email address, a phone number or the display name
+  # matches. Returns them most-similar first.
+  def link_suggestions_for(contact)
+    contacts.reject { |other| other.id == contact.id }
+            .map { |other| [other, similarity(contact, other)] }
+            .select { |_, score| score.positive? }
+            .sort_by { |_, score| -score }
+            .map(&:first)
+  end
+
+  # An exact email match is the strongest signal, then a phone number, then an
+  # identical display name.
+  def similarity(one, other)
+    score = 0
+    score += 3 if shares_any?(one.emails, other.emails) { |v| v.value.downcase }
+    score += 2 if shares_any?(one.phones, other.phones) { |v| v.value.gsub(/[^0-9]/, '') }
+    score += 1 if one.display_name.casecmp(other.display_name).zero?
+    score
+  end
+
+  def shares_any?(mine, theirs, &normalize)
+    values_of(mine, &normalize).intersect?(values_of(theirs, &normalize))
+  end
+
+  def values_of(values, &normalize)
+    values.reject(&:empty?).map(&normalize).reject(&:empty?).to_set
+  end
+
   def toggle_favorite(contact) = set_favorite(contact, !contact.favorite?)
 
   def set_favorite(contact, value)
@@ -132,6 +183,9 @@ class ContactStore
         result[field] = Array(result[field]).map { |v| TypedValue.coerce(v) } if result.key?(field)
       end
       result[:roles] = Array(result[:roles]).map { |v| Role.coerce(v) } if result.key?(:roles)
+      result[:im_addresses] = Array(result[:im_addresses]).map { |v| ImAddress.coerce(v) } if result.key?(:im_addresses)
+      result[:structured_name] = StructuredName.coerce(result[:structured_name]) if result.key?(:structured_name)
+      result[:avatar] = Avatar.coerce(result[:avatar]) if result.key?(:avatar)
       result[:birthday] = Contact.parse_birthday(result[:birthday]) if result.key?(:birthday)
     end
   end
@@ -156,7 +210,7 @@ class ContactStore
   # and splice the result back.
   def resort
     selected_contact.then do |previously_selected|
-      contacts.sort_by { |c| [c.favorite? ? 0 : 1, c.display_name.downcase, c.id.to_s] }.then do |sorted|
+      contacts.sort_by { |c| [c.favorite? ? 0 : 1, c.sort_name(on_surname: @sort_on_surname).downcase, c.id.to_s] }.then do |sorted|
         @list_store.splice(0, @list_store.n_items, sorted) unless sorted == contacts
       end
       restore_selection(previously_selected)
@@ -187,7 +241,10 @@ class ContactStore
   def searchable_fields(item)
     [
       item.name,
+      item.alias_name,
       item.nickname,
+      item.structured_name.to_s,
+      item.im_addresses.map(&:value),
       item.emails.map(&:value),
       item.phones.map(&:value),
       item.addresses.map(&:value),

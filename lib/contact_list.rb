@@ -11,8 +11,22 @@ require 'adwaita'
 class ContactList
   AVATAR_SIZE = 32
 
-  def initialize(store)
+  def initialize(store, on_selection_changed: nil)
     @store = store
+    @on_selection_changed = on_selection_changed
+    @selection_mode = false
+  end
+
+  def selection_mode? = @selection_mode
+
+  # Swaps the model between single and multiple selection. Upstream's main
+  # window does the same thing when its selection-mode button is toggled: the
+  # rows grow a checkbox and the bottom bar offers the bulk actions.
+  def selection_mode=(enabled)
+    @selection_mode = enabled
+    @store.unmark_all unless enabled
+    list_view.model = enabled ? @store.multi_selection_model : @store.selection_model
+    list_view.factory = list_factory
   end
 
   def build
@@ -32,6 +46,13 @@ class ContactList
 
       @store.sorted_model.signal_connect('items-changed') { update_visible_page }
     end.tap { update_visible_page }
+  end
+
+  # Forces every visible row to rebind, which is how a change to the sort or
+  # display order reaches rows the list view has already realised.
+  def refresh
+    @store.list_store.then { |store| store.items_changed(0, store.n_items, store.n_items) }
+    update_visible_page
   end
 
   # Shows the list, the "no contacts yet" page or the "no results" page,
@@ -90,15 +111,22 @@ class ContactList
       f.signal_connect('bind') do |_, item|
         item.item.then do |contact|
           item.child.tap do |box|
-            box.first_child.tap do |avatar|
+            avatar_of(box).tap do |avatar|
               avatar.text = contact.display_name
               avatar.show_initials = true
             end
 
-            box.first_child.next_sibling.tap do |labels|
-              labels.first_child.label = contact.display_name
+            checkbox_of(box).tap do |checkbox|
+              checkbox.visible = @selection_mode
+              checkbox.active = @selection_mode && item.selected?
+            end
+
+            labels_of(box).tap do |labels|
+              labels.first_child.label = @store.sort_on_surname ? contact.sort_name(on_surname: true) : contact.display_name
               labels.first_child.next_sibling.label = subtitle_for(contact)
             end
+
+            avatar_of(box).custom_image = contact.avatar&.texture
 
             # The star always occupies its slot so rows never reflow; only the
             # glyph and its emphasis change.
@@ -123,6 +151,15 @@ class ContactList
       box.margin_bottom = 6
       box.margin_start = 12
       box.margin_end = 12
+
+      box.append(Gtk::CheckButton.new.tap do |checkbox|
+        checkbox.valign = :center
+        checkbox.visible = false
+        checkbox.can_focus = false
+        # The row's own click drives selection; the checkbox only reflects it,
+        # so it must not steal the press.
+        checkbox.sensitive = false
+      end)
 
       box.append(Adwaita::Avatar.new(AVATAR_SIZE, nil, true))
 
@@ -149,6 +186,11 @@ class ContactList
       end)
     end
   end
+
+  # Row children, by position: checkbox, avatar, labels box, favourite star.
+  def checkbox_of(box) = box.first_child
+  def avatar_of(box) = box.first_child.next_sibling
+  def labels_of(box) = box.first_child.next_sibling.next_sibling
 
   # Secondary line: whatever identifies the contact beyond their name.
   def subtitle_for(contact)

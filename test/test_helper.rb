@@ -41,12 +41,16 @@ module TempData
       nickname: 'Ada',
       birthday: '1815-12-10',
       favorite: true,
-      emails: [{ value: 'ada@analytical.engine', type: 'work' }],
-      phones: [{ value: '+44 20 7946 0100', type: 'home' }],
-      urls: [{ value: 'analytical.engine', type: 'work' }],
-      addresses: [{ value: '12 Marylebone Rd, London', type: 'home' }],
-      notes: [{ value: "First programmer; wrote note G, 1843", type: 'personal' }],
-      roles: [{ organization: 'Analytical Engine Co', title: 'Mathematician', type: 'work' }]
+      alias_name: 'Ada L',
+      structured_name: { given: 'Ada', family: 'Lovelace', additional: 'Byron',
+                         prefixes: 'Ms', suffixes: 'FRS' },
+      im_addresses: [{ value: 'ada@jabber.org', service: 'jabber' }],
+      emails: [{ value: 'ada@analytical.engine', type: 'Work' }],
+      phones: [{ value: '+44 20 7946 0100', type: 'Home' }],
+      urls: [{ value: 'analytical.engine', type: 'Work' }],
+      addresses: [{ value: '12 Marylebone Rd, London', type: 'Home' }],
+      notes: [{ value: "First programmer; wrote note G, 1843", type: 'Personal' }],
+      roles: [{ organization: 'Analytical Engine Co', title: 'Mathematician', type: 'Work' }]
     }
   end
 end
