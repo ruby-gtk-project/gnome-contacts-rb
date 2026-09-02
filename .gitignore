@@ -4,3 +4,5 @@ vendor/bundle/
 Gemfile.lock
 tmp/
 .DS_Store
+
+tmp/

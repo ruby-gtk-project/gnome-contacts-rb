@@ -30,7 +30,12 @@ OptionParser.new do |parser|
   parser.on('-e', '--email ADDRESS', 'Show contact with this email address') { |v| options[:email] = v }
   parser.on('-i', '--individual ID', 'Show contact with this individual id') { |v| options[:individual] = v }
   parser.on('-s', '--search TERM', 'Show contacts with the given filter') { |v| options[:search] = v }
-  parser.on('-b', '--backend NAME', %w[json vcard], 'Storage backend (json, vcard)') { |v| options[:backend] = v.to_sym }
+  parser.on(
+    '-b',
+    '--backend NAME',
+    %w[json vcard],
+    'Storage backend (json, vcard)',
+  ) { |v| options[:backend] = v.to_sym }
   parser.on('-v', '--version', 'Show the current version of Contacts') do
     puts "gnome-contacts-rb #{VERSION}"
     exit 0
@@ -39,11 +44,13 @@ end.parse!
 
 # A bare positional argument still selects the backend, as it did before the
 # options existed.
-options[:backend] = ARGV.first.to_sym if %w[json vcard].include?(ARGV.first)
+if %w[json vcard].include?(ARGV.first)
+  options[:backend] = ARGV.first.to_sym
+end
 
 BACKENDS = {
-  json: -> { Backends::JsonBackend.new },
-  vcard: -> { Backends::VCardBackend.new }
+  json:  -> { Backends::JsonBackend.new },
+  vcard: -> { Backends::VCardBackend.new },
 }.freeze
 
 Settings.new.then do |settings|
@@ -51,11 +58,14 @@ Settings.new.then do |settings|
     warn "Using backend: #{backend.display_name}"
     warn "Data location: #{backend.location}"
 
-    App.new(backend: backend, settings: settings,
-            startup_query: options[:search] || options[:email],
-            startup_contact_id: options[:individual],
+    App.new(
+      backend:            backend,
+      settings:           settings,
+      startup_query:      options[:search] || options[:email],
+      startup_contact_id: options[:individual],
             # On first run the setup wizard offers these instead of opening
             # straight into the main window.
-            setup_backends: BACKENDS.values.map(&:call)).build.run
+      setup_backends:     BACKENDS.values.map(&:call),
+    ).build.run
   end
 end

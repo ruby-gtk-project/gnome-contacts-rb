@@ -34,14 +34,16 @@ module Operations
     end
 
     def undo
-      raise "#{self.class} cannot be undone" unless reversable?
+      unless reversable?
+        raise "#{self.class} cannot be undone"
+      end
 
       _undo.tap { @executed = false }
     end
 
     private
 
-    def _undo = raise(NotImplementedError, "#{self.class}#_undo")
+      def _undo = raise(NotImplementedError, "#{self.class}#_undo")
   end
 
   # Deletes one or more contacts, remembering enough to put them back.
@@ -50,11 +52,18 @@ module Operations
       super()
       @store = store
       @contacts = Array(contacts)
+      # Snapshotted up front: once a contact is deleted its Ruby wrapper points
+      # at freed memory, so #description must not read from it afterwards.
+      @names = @contacts.map(&:display_name)
       @undo_info = []
     end
 
     def description
-      @contacts.length == 1 ? "Deleted #{@contacts.first.display_name}" : "Deleted #{@contacts.length} contacts"
+      if @names.length == 1
+        "Deleted #{@names.first}"
+      else
+        "Deleted #{@names.length} contacts"
+      end
     end
 
     def reversable? = executed? && @undo_info.any?
@@ -66,9 +75,9 @@ module Operations
     private
 
     # Restored in reverse so the recorded positions still line up.
-    def _undo
-      @undo_info.reverse.map { |info| @store.restore_contact(info) }.tap { @undo_info = [] }
-    end
+      def _undo
+        @undo_info.reverse.map { |info| @store.restore_contact(info) }.tap { @undo_info = [] }
+      end
   end
 
   # Merges several contacts into one. Upstream hands this to Folks, which links
@@ -100,29 +109,35 @@ module Operations
     # Union of every field, keeping the primary contact's values first and
     # dropping duplicates.
     def merged_attributes
-      { name: first_non_empty(:name), alias_name: first_non_empty(:alias_name),
-        nickname: first_non_empty(:nickname), birthday: @contacts.map(&:birthday).compact.first,
-        favorite: @contacts.any?(&:favorite?), avatar: @contacts.map(&:avatar).compact.first,
+      {
+        name:            first_non_empty(:name),
+        alias_name:      first_non_empty(:alias_name),
+        nickname:        first_non_empty(:nickname),
+        birthday:        @contacts.map(&:birthday).compact.first,
+        favorite:        @contacts.any?(&:favorite?),
+        avatar:          @contacts.map(&:avatar).compact.first,
         structured_name: @contacts.map(&:structured_name).find { |n| n && !n.empty? },
-        roles: merge(:roles), im_addresses: merge(:im_addresses) }
+        roles:           merge(:roles),
+        im_addresses:    merge(:im_addresses),
+      }
         .merge(Contact::MULTI_VALUE_FIELDS.to_h { |field| [field, merge(field)] })
     end
 
     private
 
-    def first_non_empty(field)
-      @contacts.map { |c| c.public_send(field).to_s }.find { |v| !v.strip.empty? }.to_s
-    end
+      def first_non_empty(field)
+        @contacts.map { |c| c.public_send(field).to_s }.find { |v| !v.strip.empty? }.to_s
+      end
 
-    def merge(field) = @contacts.flat_map { |c| c.public_send(field) }.reject(&:empty?).uniq
+      def merge(field) = @contacts.flat_map { |c| c.public_send(field) }.reject(&:empty?).uniq
 
-    def _undo
-      @removed.reverse.each { |info| @store.restore_contact(info) }
-      @store.update_contact(@primary, **Contact.from_h(@snapshot.first).to_h)
-      @removed = []
-      @snapshot = nil
-      @primary
-    end
+      def _undo
+        @removed.reverse.each { |info| @store.restore_contact(info) }
+        @store.update_contact(@primary, **Contact.from_h(@snapshot.first).to_h)
+        @removed = []
+        @snapshot = nil
+        @primary
+      end
   end
 
   # Splits a previously linked contact back into one contact per role/email
@@ -142,7 +157,9 @@ module Operations
     def reversable? = false
 
     def execute
-      raise 'This contact is not linked' unless possible?
+      unless possible?
+        raise 'This contact is not linked'
+      end
 
       @link_operation.undo
     end
@@ -174,10 +191,10 @@ module Operations
 
     private
 
-    def _undo
-      @imported.each { |contact| @store.delete_contact(contact) }
-      @imported = []
-    end
+      def _undo
+        @imported.each { |contact| @store.delete_contact(contact) }
+        @imported = []
+      end
   end
 
   # Keeps the operations that have run, so the window can undo the last one and
@@ -215,7 +232,11 @@ module Operations
     def last_reversable = @operations.reverse.find(&:reversable?)
 
     def undo_last
-      last_reversable.then { |operation| undo(operation.uuid) if operation }
+      last_reversable.then do |operation|
+        if operation
+          undo(operation.uuid)
+        end
+      end
     end
 
     def length = @operations.length

@@ -18,10 +18,10 @@ class ContactEditor
 
   # Multi-value fields that are a value plus a TypeSet label.
   TYPED_FIELDS = {
-    emails: { title: 'Add email', icon: 'mail-unread-symbolic', purpose: :email },
-    phones: { title: 'Add phone number', icon: 'phone-symbolic', purpose: :phone },
-    urls: { title: 'Website', icon: 'web-browser-symbolic', purpose: :url },
-    addresses: { title: 'Address', icon: 'mark-location-symbolic', purpose: :free_form }
+    emails:    { title: 'Add email', icon: 'mail-unread-symbolic', purpose: :email },
+    phones:    { title: 'Add phone number', icon: 'phone-symbolic', purpose: :phone },
+    urls:      { title: 'Website', icon: 'web-browser-symbolic', purpose: :url },
+    addresses: { title: 'Address', icon: 'mark-location-symbolic', purpose: :free_form },
   }.freeze
 
   def initialize(contact: nil, on_avatar_change: nil)
@@ -81,16 +81,16 @@ class ContactEditor
 
   def collect_data
     {
-      id: @contact&.id || SecureRandom.uuid,
-      name: name_row.text,
-      alias_name: alias_row.text,
-      nickname: nickname_row.text,
-      birthday: parse_birthday(birthday_row.text),
+      id:              @contact&.id || SecureRandom.uuid,
+      name:            name_row.text,
+      alias_name:      alias_row.text,
+      nickname:        nickname_row.text,
+      birthday:        parse_birthday(birthday_row.text),
       structured_name: collect_structured_name,
-      avatar: @avatar_data,
-      roles: collect_roles,
-      im_addresses: collect_im_addresses,
-      notes: collect_notes
+      avatar:          @avatar_data,
+      roles:           collect_roles,
+      im_addresses:    collect_im_addresses,
+      notes:           collect_notes,
     }.merge(TYPED_FIELDS.keys.to_h { |field| [field, collect_typed_values(@rows[field])] })
   end
 
@@ -136,345 +136,380 @@ class ContactEditor
   # The five N components, in the order the editor shows them.
   def structured_name_rows
     @structured_name_rows ||= {
-      prefixes: prefixes_row, given: given_name_row, additional: additional_name_row,
-      family: family_name_row, suffixes: suffixes_row
+      prefixes:   prefixes_row,
+      given:      given_name_row,
+      additional: additional_name_row,
+      family:     family_name_row,
+      suffixes:   suffixes_row,
     }
   end
 
   def group_for(field)
-    { emails: emails_group, phones: phones_group, urls: urls_group,
-      addresses: addresses_group }.fetch(field)
+    {
+      emails:    emails_group,
+      phones:    phones_group,
+      urls:      urls_group,
+      addresses: addresses_group,
+    }.fetch(field)
   end
 
   private
 
-  def titled_group(title)
-    Adwaita::PreferencesGroup.new.tap do |group|
-      group.title = title
+    def titled_group(title)
+      Adwaita::PreferencesGroup.new.tap do |group|
+        group.title = title
+      end
     end
-  end
 
-  def entry_row(title, icon: nil, &on_change)
-    Adwaita::EntryRow.new.tap do |row|
-      row.title = title
-      row.add_prefix(Gtk::Image.new(icon_name: icon)) if icon
-      row.signal_connect('changed') { on_change.call } if on_change
+    def entry_row(title, icon: nil, &on_change)
+      Adwaita::EntryRow.new.tap do |row|
+        row.title = title
+        if icon
+          row.add_prefix(Gtk::Image.new(icon_name: icon))
+        end
+        if on_change
+          row.signal_connect('changed') { on_change.call }
+        end
+      end
     end
-  end
 
-  def structured_name = @contact&.structured_name || StructuredName.empty
+    def structured_name = @contact&.structured_name || StructuredName.empty
 
   # --- Field initialisation ----------------------------------------------
 
-  def init_typed_fields
-    TYPED_FIELDS.each_key do |field|
-      Array(@contact&.public_send(field)).each { |v| add_typed_row(field, v.value, v.type) }
-      add_typed_row(field, '', TypeSet.for_field(field).default.display_name)
+    def init_typed_fields
+      TYPED_FIELDS.each_key do |field|
+        Array(@contact&.public_send(field)).each { |v| add_typed_row(field, v.value, v.type) }
+        add_typed_row(field, '', TypeSet.for_field(field).default.display_name)
+      end
     end
-  end
 
-  def init_roles
-    Array(@contact&.roles).each { |role| add_role_row(role.organization, role.title) }
-    add_role_row('', '')
-  end
+    def init_roles
+      Array(@contact&.roles).each { |role| add_role_row(role.organization, role.title) }
+      add_role_row('', '')
+    end
 
-  def init_im_addresses
-    Array(@contact&.im_addresses).each { |im| add_im_row(im.value, im.service) }
-    add_im_row('', 'jabber')
-  end
+    def init_im_addresses
+      Array(@contact&.im_addresses).each { |im| add_im_row(im.value, im.service) }
+      add_im_row('', 'jabber')
+    end
 
-  def init_notes
-    Array(@contact&.notes).each { |note| add_note_row(note.value) }
-    add_note_row('')
-  end
+    def init_notes
+      Array(@contact&.notes).each { |note| add_note_row(note.value) }
+      add_note_row('')
+    end
 
   # --- Row builders -------------------------------------------------------
 
-  def add_typed_row(field, value, type)
-    TypeSet.for_field(field).then do |type_set|
-      { entry_row: nil, type: type, added_new: false }.tap do |row_data|
-        Adwaita::EntryRow.new.tap do |row|
-          row.title = TYPED_FIELDS[field][:title]
-          row.text = value
-          row.input_purpose = TYPED_FIELDS[field][:purpose]
-          row.add_prefix(Gtk::Image.new(icon_name: TYPED_FIELDS[field][:icon]))
-          row_data[:entry_row] = row
+    def add_typed_row(field, value, type)
+      TypeSet.for_field(field).then do |type_set|
+        { entry_row: nil, type: type, added_new: false }.tap do |row_data|
+          Adwaita::EntryRow.new.tap do |row|
+            row.title = TYPED_FIELDS[field][:title]
+            row.text = value
+            row.input_purpose = TYPED_FIELDS[field][:purpose]
+            row.add_prefix(Gtk::Image.new(icon_name: TYPED_FIELDS[field][:icon]))
+            row_data[:entry_row] = row
 
-          row.add_suffix(type_dropdown(type_set, row_data))
-          row.signal_connect('changed') do
-            ensure_trailing_blank_row(row_data, @rows[field]) do
-              add_typed_row(field, '', type_set.default.display_name)
+            row.add_suffix(type_dropdown(type_set, row_data))
+            row.signal_connect('changed') do
+              ensure_trailing_blank_row(row_data, @rows[field]) do
+                add_typed_row(field, '', type_set.default.display_name)
+              end
             end
+
+            group_for(field).add(row)
           end
 
-          group_for(field).add(row)
+          @rows[field] << row_data
         end
-
-        @rows[field] << row_data
       end
     end
-  end
 
   # A dropdown over the field's TypeSet, whose last entry ("Other…") swaps in
   # an entry for a custom label — upstream's TypeDescriptor.custom.
-  def type_dropdown(type_set, row_data)
-    Gtk::DropDown.new.tap do |dropdown|
-      dropdown.model = Gtk::StringList.new(labels_including(type_set, row_data[:type]))
-      dropdown.valign = :center
-      dropdown.selected = selected_index(type_set, row_data[:type])
+    def type_dropdown(type_set, row_data)
+      Gtk::DropDown.new.tap do |dropdown|
+        dropdown.model = Gtk::StringList.new(labels_including(type_set, row_data[:type]))
+        dropdown.valign = :center
+        dropdown.selected = selected_index(type_set, row_data[:type])
 
-      dropdown.signal_connect('notify::selected') do
-        dropdown.model.get_string(dropdown.selected).then do |label|
-          if label == TypeSet::OTHER_LABEL
-            prompt_for_custom_label(type_set, row_data, dropdown)
-          else
-            row_data[:type] = label
+        dropdown.signal_connect('notify::selected') do
+          dropdown.model.get_string(dropdown.selected).then do |label|
+            if label == TypeSet::OTHER_LABEL
+              prompt_for_custom_label(type_set, row_data, dropdown)
+            else
+              row_data[:type] = label
+            end
           end
         end
       end
     end
-  end
 
   # A custom label the contact already carries has to appear in the model, or
   # the dropdown could not show it.
-  def labels_including(type_set, type)
-    type_set.index_of(type) ? type_set.labels : type_set.descriptors.map(&:display_name) + [type, TypeSet::OTHER_LABEL]
-  end
+    def labels_including(type_set, type)
+      type_set.index_of(type) ? type_set.labels : type_set.descriptors.map(&:display_name) + [type, TypeSet::OTHER_LABEL]
+    end
 
-  def selected_index(type_set, type)
-    type_set.index_of(type) || type_set.descriptors.length
-  end
+    def selected_index(type_set, type)
+      type_set.index_of(type) || type_set.descriptors.length
+    end
 
   # Shown when the user picks "Other…": a small dialog collecting the label.
-  def prompt_for_custom_label(type_set, row_data, dropdown)
-    Adwaita::AlertDialog.new('Custom Type', 'Enter a label for this field').tap do |dialog|
-      custom_label_entry(row_data).tap do |entry|
-        dialog.extra_child = entry
-        dialog.add_response('cancel', '_Cancel')
-        dialog.add_response('save', '_Save')
-        dialog.default_response = 'save'
-        dialog.set_response_appearance('save', Adwaita::ResponseAppearance::SUGGESTED)
+    def prompt_for_custom_label(type_set, row_data, dropdown)
+      Adwaita::AlertDialog.new('Custom Type', 'Enter a label for this field').tap do |dialog|
+        custom_label_entry(row_data).tap do |entry|
+          dialog.extra_child = entry
+          dialog.add_response('cancel', '_Cancel')
+          dialog.add_response('save', '_Save')
+          dialog.default_response = 'save'
+          dialog.set_response_appearance('save', Adwaita::ResponseAppearance::SUGGESTED)
 
-        dialog.signal_connect('response') do |_, response|
-          if response == 'save' && !entry.text.strip.empty?
-            row_data[:type] = entry.text.strip
-            apply_custom_label(type_set, dropdown, row_data)
-          else
-            dropdown.selected = selected_index(type_set, row_data[:type])
+          dialog.signal_connect('response') do |_, response|
+            if response == 'save' && !entry.text.strip.empty?
+              row_data[:type] = entry.text.strip
+              apply_custom_label(type_set, dropdown, row_data)
+            else
+              dropdown.selected = selected_index(type_set, row_data[:type])
+            end
           end
-        end
 
-        dialog.present(dropdown.root)
+          dialog.present(dropdown.root)
+        end
       end
     end
-  end
 
-  def custom_label_entry(row_data)
-    Gtk::Entry.new.tap do |entry|
-      entry.text = row_data[:type].to_s
-      entry.margin_start = 12
-      entry.margin_end = 12
-      entry.margin_top = 6
-      entry.margin_bottom = 6
+    def custom_label_entry(row_data)
+      Gtk::Entry.new.tap do |entry|
+        entry.text = row_data[:type].to_s
+        entry.margin_start = 12
+        entry.margin_end = 12
+        entry.margin_top = 6
+        entry.margin_bottom = 6
+      end
     end
-  end
 
   # Puts the custom label into the dropdown's model so it is what the user sees.
-  def apply_custom_label(type_set, dropdown, row_data)
-    (type_set.descriptors.map(&:display_name) + [row_data[:type], TypeSet::OTHER_LABEL]).then do |labels|
-      dropdown.model = Gtk::StringList.new(labels)
-      dropdown.selected = labels.length - 2
-    end
-  end
-
-  def add_role_row(organization, title)
-    { organization_row: nil, title_row: nil, added_new: false }.tap do |row_data|
-      row_data[:organization_row] = role_entry('Organisation', organization, 'building-symbolic', row_data)
-      row_data[:title_row] = role_entry('Role', title, nil, row_data)
-      @rows[:roles] << row_data
-    end
-  end
-
-  def role_entry(title, value, icon, row_data)
-    Adwaita::EntryRow.new.tap do |row|
-      row.title = title
-      row.text = value
-      row.add_prefix(Gtk::Image.new(icon_name: icon)) if icon
-      row.signal_connect('changed') do
-        ensure_trailing_blank_row(row_data, @rows[:roles]) { add_role_row('', '') }
+    def apply_custom_label(type_set, dropdown, row_data)
+      (type_set.descriptors.map(&:display_name) + [row_data[:type], TypeSet::OTHER_LABEL]).then do |labels|
+        dropdown.model = Gtk::StringList.new(labels)
+        dropdown.selected = labels.length - 2
       end
-      roles_group.add(row)
     end
-  end
 
-  def add_im_row(value, service)
-    { entry_row: nil, service: service, added_new: false }.tap do |row_data|
+    def add_role_row(organization, title)
+      { organization_row: nil, title_row: nil, added_new: false }.tap do |row_data|
+        row_data[:organization_row] = role_entry(
+          'Organisation',
+          organization,
+          'building-symbolic',
+          row_data,
+        )
+        row_data[:title_row] = role_entry(
+          'Role',
+          title,
+          nil,
+          row_data,
+        )
+        @rows[:roles] << row_data
+      end
+    end
+
+    def role_entry(title, value, icon, row_data)
       Adwaita::EntryRow.new.tap do |row|
-        row.title = 'Add IM address'
+        row.title = title
         row.text = value
-        row.add_prefix(Gtk::Image.new(icon_name: 'chat-symbolic'))
-        row_data[:entry_row] = row
-        row.add_suffix(im_service_dropdown(row_data))
-
+        if icon
+          row.add_prefix(Gtk::Image.new(icon_name: icon))
+        end
         row.signal_connect('changed') do
-          ensure_trailing_blank_row(row_data, @rows[:im_addresses]) { add_im_row('', 'jabber') }
+          ensure_trailing_blank_row(row_data, @rows[:roles]) { add_role_row('', '') }
+        end
+        roles_group.add(row)
+      end
+    end
+
+    def add_im_row(value, service)
+      { entry_row: nil, service: service, added_new: false }.tap do |row_data|
+        Adwaita::EntryRow.new.tap do |row|
+          row.title = 'Add IM address'
+          row.text = value
+          row.add_prefix(Gtk::Image.new(icon_name: 'chat-symbolic'))
+          row_data[:entry_row] = row
+          row.add_suffix(im_service_dropdown(row_data))
+
+          row.signal_connect('changed') do
+            ensure_trailing_blank_row(row_data, @rows[:im_addresses]) { add_im_row('', 'jabber') }
+          end
+
+          im_group.add(row)
         end
 
-        im_group.add(row)
-      end
-
-      @rows[:im_addresses] << row_data
-    end
-  end
-
-  def im_service_dropdown(row_data)
-    Gtk::DropDown.new.tap do |dropdown|
-      ImService.identifiers.then do |ids|
-        dropdown.model = Gtk::StringList.new(ids.map { |id| ImService.display_name(id) })
-        dropdown.valign = :center
-        dropdown.selected = ids.index(row_data[:service]) || 0
-        dropdown.signal_connect('notify::selected') { row_data[:service] = ids[dropdown.selected] }
+        @rows[:im_addresses] << row_data
       end
     end
-  end
 
-  def add_note_row(value)
-    { text_view: nil, added_new: false }.tap do |row_data|
-      Adwaita::PreferencesRow.new.tap do |row|
-        row.activatable = false
-        row.child = note_box(value, row_data)
-        notes_group.add(row)
-      end
-
-      @rows[:notes] << row_data
-    end
-  end
-
-  def note_box(value, row_data)
-    Gtk::Box.new(:horizontal, 12).tap do |box|
-      box.margin_top = 12
-      box.margin_bottom = 12
-      box.margin_start = 12
-      box.margin_end = 12
-
-      box.append(Gtk::Image.new.tap do |icon|
-        icon.icon_name = 'notepad-symbolic'
-        icon.valign = :start
-        icon.add_css_class('dim-label')
-      end)
-
-      box.append(Gtk::ScrolledWindow.new.tap do |sw|
-        sw.hscrollbar_policy = :never
-        sw.min_content_height = 80
-        sw.hexpand = true
-        sw.child = note_view(value, row_data)
-      end)
-    end
-  end
-
-  def note_view(value, row_data)
-    Gtk::TextView.new.tap do |tv|
-      tv.wrap_mode = :word_char
-      tv.buffer.text = value
-      row_data[:text_view] = tv
-      tv.buffer.signal_connect('changed') do
-        ensure_trailing_blank_row(row_data, @rows[:notes]) { add_note_row('') }
+    def im_service_dropdown(row_data)
+      Gtk::DropDown.new.tap do |dropdown|
+        ImService.identifiers.then do |ids|
+          dropdown.model = Gtk::StringList.new(ids.map { |id| ImService.display_name(id) })
+          dropdown.valign = :center
+          dropdown.selected = ids.index(row_data[:service]) || 0
+          dropdown.signal_connect('notify::selected') { row_data[:service] = ids[dropdown.selected] }
+        end
       end
     end
-  end
+
+    def add_note_row(value)
+      { text_view: nil, added_new: false }.tap do |row_data|
+        Adwaita::PreferencesRow.new.tap do |row|
+          row.activatable = false
+          row.child = note_box(value, row_data)
+          notes_group.add(row)
+        end
+
+        @rows[:notes] << row_data
+      end
+    end
+
+    def note_box(value, row_data)
+      Gtk::Box.new(:horizontal, 12).tap do |box|
+        box.margin_top = 12
+        box.margin_bottom = 12
+        box.margin_start = 12
+        box.margin_end = 12
+
+        box.append(
+          Gtk::Image.new.tap do |icon|
+                  icon.icon_name = 'notepad-symbolic'
+                  icon.valign = :start
+                  icon.add_css_class('dim-label')
+                end,
+        )
+
+        box.append(
+          Gtk::ScrolledWindow.new.tap do |sw|
+                  sw.hscrollbar_policy = :never
+                  sw.min_content_height = 80
+                  sw.hexpand = true
+                  sw.child = note_view(value, row_data)
+                end,
+        )
+      end
+    end
+
+    def note_view(value, row_data)
+      Gtk::TextView.new.tap do |tv|
+        tv.wrap_mode = :word_char
+        tv.buffer.text = value
+        row_data[:text_view] = tv
+        tv.buffer.signal_connect('changed') do
+          ensure_trailing_blank_row(row_data, @rows[:notes]) { add_note_row('') }
+        end
+      end
+    end
 
   # --- Blank-row bookkeeping ---------------------------------------------
 
   # Each multi-value group keeps exactly one blank row at the end: as soon as
   # the user types into the blank row, a fresh blank one is appended below it.
-  def ensure_trailing_blank_row(row_data, rows)
-    row_data[:added_new].then do |added|
-      if !added && !row_empty?(row_data) && rows.none? { |row| row_empty?(row) }
-        row_data[:added_new] = true
-        yield
-      end
-    end
-  end
-
-  def row_empty?(row_data)
-    if row_data[:entry_row]
-      row_data[:entry_row].text.strip.empty?
-    elsif row_data[:organization_row]
-      row_data[:organization_row].text.strip.empty? && row_data[:title_row].text.strip.empty?
-    elsif row_data[:text_view]
-      row_data[:text_view].buffer.text.strip.empty?
-    else
-      true
-    end
-  end
-
-  # --- Collection ---------------------------------------------------------
-
-  def collect_typed_values(rows)
-    rows.filter_map do |row_data|
-      row_data[:entry_row].text.strip.then do |value|
-        { value: value, type: row_data[:type] } unless value.empty?
-      end
-    end
-  end
-
-  def collect_im_addresses
-    @rows[:im_addresses].filter_map do |row_data|
-      row_data[:entry_row].text.strip.then do |value|
-        { value: value, service: row_data[:service] } unless value.empty?
-      end
-    end
-  end
-
-  def collect_notes
-    @rows[:notes].filter_map do |row_data|
-      row_data[:text_view].buffer.text.strip.then do |value|
-        { value: value, type: 'Home' } unless value.empty?
-      end
-    end
-  end
-
-  def collect_roles
-    @rows[:roles].filter_map do |row_data|
-      [row_data[:organization_row].text.strip, row_data[:title_row].text.strip].then do |org, title|
-        { organization: org, title: title, type: 'Work' } unless org.empty? && title.empty?
-      end
-    end
-  end
-
-  def collect_structured_name
-    structured_name_rows.to_h { |field, row| [field, row.text.strip] }
-  end
-
-  # --- Avatar -------------------------------------------------------------
-
-  def on_avatar_selected(avatar)
-    @avatar_data = avatar
-    editable_avatar.set_avatar(avatar)
-    @on_avatar_change&.call(avatar)
-  end
-
-  def update_avatar_text = editable_avatar.text = name_row.text
-
-  def format_birthday(birthday)
-    case birthday
-    when Date then birthday.iso8601
-    when String then birthday
-    else ''
-    end
-  end
-
-  def parse_birthday(text)
-    text.to_s.strip.then do |t|
-      if t.empty?
-        nil
-      else
-        begin
-          Date.parse(t)
-        rescue Date::Error
-          t
+    def ensure_trailing_blank_row(row_data, rows)
+      row_data[:added_new].then do |added|
+        if !added && !row_empty?(row_data) && rows.none? { |row| row_empty?(row) }
+          row_data[:added_new] = true
+          yield
         end
       end
     end
-  end
+
+    def row_empty?(row_data)
+      if row_data[:entry_row]
+        row_data[:entry_row].text.strip.empty?
+      elsif row_data[:organization_row]
+        row_data[:organization_row].text.strip.empty? && row_data[:title_row].text.strip.empty?
+      elsif row_data[:text_view]
+        row_data[:text_view].buffer.text.strip.empty?
+      else
+        true
+      end
+    end
+
+  # --- Collection ---------------------------------------------------------
+
+    def collect_typed_values(rows)
+      rows.filter_map do |row_data|
+        row_data[:entry_row].text.strip.then do |value|
+          unless value.empty?
+            { value: value, type: row_data[:type] }
+          end
+        end
+      end
+    end
+
+    def collect_im_addresses
+      @rows[:im_addresses].filter_map do |row_data|
+        row_data[:entry_row].text.strip.then do |value|
+          unless value.empty?
+            { value: value, service: row_data[:service] }
+          end
+        end
+      end
+    end
+
+    def collect_notes
+      @rows[:notes].filter_map do |row_data|
+        row_data[:text_view].buffer.text.strip.then do |value|
+          unless value.empty?
+            { value: value, type: 'Home' }
+          end
+        end
+      end
+    end
+
+    def collect_roles
+      @rows[:roles].filter_map do |row_data|
+        [row_data[:organization_row].text.strip, row_data[:title_row].text.strip].then do |org, title|
+          unless org.empty? && title.empty?
+            { organization: org, title: title, type: 'Work' }
+          end
+        end
+      end
+    end
+
+    def collect_structured_name
+      structured_name_rows.to_h { |field, row| [field, row.text.strip] }
+    end
+
+  # --- Avatar -------------------------------------------------------------
+
+    def on_avatar_selected(avatar)
+      @avatar_data = avatar
+      editable_avatar.set_avatar(avatar)
+      @on_avatar_change&.call(avatar)
+    end
+
+    def update_avatar_text = editable_avatar.text = name_row.text
+
+    def format_birthday(birthday)
+      case birthday
+      when Date then birthday.iso8601
+      when String then birthday
+      else ''
+      end
+    end
+
+    def parse_birthday(text)
+      text.to_s.strip.then do |t|
+        if t.empty?
+          nil
+        else
+          begin
+            Date.parse(t)
+          rescue Date::Error
+            t
+          end
+        end
+      end
+    end
 end

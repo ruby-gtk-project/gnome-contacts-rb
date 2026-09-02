@@ -38,8 +38,12 @@ module Backends
 
     def update(contact_hash)
       symbolize_keys(contact_hash).tap do |contact|
-        raise ArgumentError, 'Contact ID required' unless contact[:id]
-        raise "Contact not found: #{contact[:id]}" unless File.exist?(vcard_path(contact[:id]))
+        unless contact[:id]
+          raise ArgumentError, 'Contact ID required'
+        end
+        unless File.exist?(vcard_path(contact[:id]))
+          raise "Contact not found: #{contact[:id]}"
+        end
 
         write_vcard(contact)
       end
@@ -47,37 +51,39 @@ module Backends
 
     def delete(id)
       vcard_path(id).then do |path|
-        File.delete(path) if File.exist?(path)
+        if File.exist?(path)
+          File.delete(path)
+        end
         !File.exist?(path)
       end
     end
 
     private
 
-    def default_path
-      File.join(
-        ENV.fetch('XDG_DATA_HOME', File.expand_path('~/.local/share')),
-        'ruby-contacts',
-        'vcards'
-      )
-    end
+      def default_path
+        File.join(
+          ENV.fetch('XDG_DATA_HOME', File.expand_path('~/.local/share')),
+          'ruby-contacts',
+          'vcards',
+        )
+      end
 
-    def ensure_directory = FileUtils.mkdir_p(@path)
+      def ensure_directory = FileUtils.mkdir_p(@path)
 
-    def vcard_files = Dir.glob(File.join(@path, "*.{#{EXTENSIONS.join(',')}}")).sort
+      def vcard_files = Dir.glob(File.join(@path, "*.{#{EXTENSIONS.join(',')}}")).sort
 
     # The UID doubles as the filename, so keep it to characters a filesystem is
     # guaranteed to accept. Leading dots are stripped too: a name like
     # ".._escaped.vcf" is a dotfile, and Dir.glob would then never find it again.
-    def vcard_path(id) = File.join(@path, "#{safe_name(id)}.vcf")
+      def vcard_path(id) = File.join(@path, "#{safe_name(id)}.vcf")
 
-    def safe_name(id) = id.to_s.gsub(/[^A-Za-z0-9._-]/, '_').sub(/\A\.+/, '').then { |n| n.empty? ? 'contact' : n }
+      def safe_name(id) = id.to_s.gsub(/[^A-Za-z0-9._-]/, '_').sub(/\A\.+/, '').then { |n| n.empty? ? 'contact' : n }
 
-    def write_vcard(contact)
-      ensure_directory
-      File.write(vcard_path(contact[:id]), "#{VCard.dump(contact)}#{VCard::EOL}")
-    end
+      def write_vcard(contact)
+        ensure_directory
+        File.write(vcard_path(contact[:id]), "#{VCard.dump(contact)}#{VCard::EOL}")
+      end
 
-    def symbolize_keys(hash) = hash.transform_keys(&:to_sym)
+      def symbolize_keys(hash) = hash.transform_keys(&:to_sym)
   end
 end

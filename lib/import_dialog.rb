@@ -75,75 +75,75 @@ class ImportDialog < Adwaita::Dialog
   # One group per file, titled with the file's display name — upstream only
   # shows the header when importing more than one file, but a single titled
   # group reads no worse and keeps the code simpler.
-  def group_for(file)
-    Adwaita::PreferencesGroup.new.tap do |group|
-      group.title = display_name(file)
+    def group_for(file)
+      Adwaita::PreferencesGroup.new.tap do |group|
+        group.title = display_name(file)
 
-      parse(file).then do |contacts|
-        if contacts.nil?
-          group.add(error_row('An error occurred reading the selected file'))
-        elsif contacts.empty?
-          group.add(error_row('No contacts found in this file'))
-        else
-          @parsed.concat(contacts)
-          group.description = summary(contacts.length)
-          contacts.each { |contact| group.add(contact_row(contact)) }
+        parse(file).then do |contacts|
+          if contacts.nil?
+            group.add(error_row('An error occurred reading the selected file'))
+          elsif contacts.empty?
+            group.add(error_row('No contacts found in this file'))
+          else
+            @parsed.concat(contacts)
+            group.description = summary(contacts.length)
+            contacts.each { |contact| group.add(contact_row(contact)) }
+          end
         end
       end
     end
-  end
 
   # nil means the file could not be read at all, which the dialog reports
   # differently from a file that simply held no contacts.
-  def parse(file)
-    VCard.parse_all(File.read(file.path))
-  rescue StandardError => e
-    warn "Could not read #{file.path}: #{e.message}"
-    nil
-  end
+    def parse(file)
+      VCard.parse_all(File.read(file.path))
+    rescue StandardError => e
+      warn "Could not read #{file.path}: #{e.message}"
+      nil
+    end
 
-  def summary(count) = count == 1 ? '1 contact' : "#{count} contacts"
+    def summary(count) = count == 1 ? '1 contact' : "#{count} contacts"
 
   # Adwaita row titles are Pango markup, and there is no GLib::Markup in these
   # bindings, so escape the special characters here.
-  MARKUP_ESCAPES = { '&' => '&amp;', '<' => '&lt;', '>' => '&gt;' }.freeze
+    MARKUP_ESCAPES = { '&' => '&amp;', '<' => '&lt;', '>' => '&gt;' }.freeze
 
-  def contact_row(contact)
-    Adwaita::ActionRow.new.tap do |row|
-      row.title = escape(preview_name(contact))
-      row.subtitle = escape(preview_detail(contact))
-      row.add_prefix(Adwaita::Avatar.new(32, preview_name(contact), true))
+    def contact_row(contact)
+      Adwaita::ActionRow.new.tap do |row|
+        row.title = escape(preview_name(contact))
+        row.subtitle = escape(preview_detail(contact))
+        row.add_prefix(Adwaita::Avatar.new(32, preview_name(contact), true))
+      end
     end
-  end
 
-  def escape(text) = text.to_s.gsub(/[&<>]/) { |char| MARKUP_ESCAPES.fetch(char) }
+    def escape(text) = text.to_s.gsub(/[&<>]/) { |char| MARKUP_ESCAPES.fetch(char) }
 
-  def preview_name(contact)
-    [contact[:name], contact[:nickname], contact[:alias]].map(&:to_s)
-                                                         .find { |v| !v.strip.empty? } || 'Unnamed Contact'
-  end
-
-  def preview_detail(contact)
-    [contact[:emails], contact[:phones]].flatten.compact.map { |v| v[:value] }
-                                        .find { |v| !v.to_s.strip.empty? }.to_s
-  end
-
-  def error_row(message)
-    Adwaita::ActionRow.new.tap do |row|
-      row.title = message
-      row.add_prefix(Gtk::Image.new(icon_name: 'dialog-warning-symbolic'))
-      row.add_css_class('dim-label')
+    def preview_name(contact)
+      [contact[:name], contact[:nickname], contact[:alias]].map(&:to_s)
+                                                           .find { |v| !v.strip.empty? } || 'Unnamed Contact'
     end
-  end
 
-  def display_name(file)
-    file.query_info(Gio::FileAttribute::STANDARD_DISPLAY_NAME, :none).display_name
-  rescue StandardError, GLib::Error
-    File.basename(file.path.to_s)
-  end
+    def preview_detail(contact)
+      [contact[:emails], contact[:phones]].flatten.compact.map { |v| v[:value] }
+                                          .find { |v| !v.to_s.strip.empty? }.to_s
+    end
 
-  def confirm
-    @on_import.call(@parsed)
-    close
-  end
+    def error_row(message)
+      Adwaita::ActionRow.new.tap do |row|
+        row.title = message
+        row.add_prefix(Gtk::Image.new(icon_name: 'dialog-warning-symbolic'))
+        row.add_css_class('dim-label')
+      end
+    end
+
+    def display_name(file)
+      file.query_info(Gio::FileAttribute::STANDARD_DISPLAY_NAME, :none).display_name
+    rescue StandardError, GLib::Error
+      File.basename(file.path.to_s)
+    end
+
+    def confirm
+      @on_import.call(@parsed)
+      close
+    end
 end

@@ -111,19 +111,19 @@ class AvatarSelector < Adwaita::Dialog
 
   # Each stock avatar is rendered to a PNG once, so choosing one produces the
   # same kind of Avatar as choosing a file does.
-  def thumbnail_for(icon_name)
-    Gtk::FlowBoxChild.new.tap do |child|
-      child.add_css_class('card')
-      child.child = Gtk::Image.new.tap do |image|
-        image.icon_name = icon_name
-        image.pixel_size = ICON_SIZE
-        image.margin_top = 12
-        image.margin_bottom = 12
-      end
+    def thumbnail_for(icon_name)
+      Gtk::FlowBoxChild.new.tap do |child|
+        child.add_css_class('card')
+        child.child = Gtk::Image.new.tap do |image|
+          image.icon_name = icon_name
+          image.pixel_size = ICON_SIZE
+          image.margin_top = 12
+          image.margin_bottom = 12
+        end
 
-      child.define_singleton_method(:avatar_data) { AvatarSelector.render_icon(icon_name) }
+        child.define_singleton_method(:avatar_data) { AvatarSelector.render_icon(icon_name) }
+      end
     end
-  end
 
   # Paints a symbolic icon onto a square surface and encodes it as PNG, so a
   # stock avatar is stored exactly like a photograph the user picked.
@@ -132,72 +132,74 @@ class AvatarSelector < Adwaita::Dialog
   # works in these bindings: Gtk::IconPaintable#file is nil for icons that
   # live in a gresource, so there is no image file to load, and turning a
   # paintable into a Gdk::Texture would need a Gsk renderer.
-  def self.render_icon(icon_name)
-    icon_node(icon_name).then do |node|
-      Cairo::ImageSurface.new(:argb32, Avatar::STORED_SIZE, Avatar::STORED_SIZE).then do |surface|
-        Cairo::Context.new(surface).tap do |cr|
-          cr.set_source_rgb(0.87, 0.87, 0.89)
-          cr.paint
-          cr.translate(Avatar::STORED_SIZE / 4.0, Avatar::STORED_SIZE / 4.0)
-          node&.draw(cr)
+    def self.render_icon(icon_name)
+      icon_node(icon_name).then do |node|
+        Cairo::ImageSurface.new(:argb32, Avatar::STORED_SIZE, Avatar::STORED_SIZE).then do |surface|
+          Cairo::Context.new(surface).tap do |cr|
+            cr.set_source_rgb(0.87, 0.87, 0.89)
+            cr.paint
+            cr.translate(Avatar::STORED_SIZE / 4.0, Avatar::STORED_SIZE / 4.0)
+            node&.draw(cr)
+          end
+          StringIO.new.tap { |io| surface.write_to_png(io) }.string
         end
-        StringIO.new.tap { |io| surface.write_to_png(io) }.string
-      end
-    end.then { |png| Avatar.new(data: png, media_type: 'image/png') }
-  rescue StandardError, GLib::Error => e
-    warn "Could not render avatar #{icon_name}: #{e.message}"
-    nil
-  end
-
-  def self.icon_node(icon_name)
-    (Avatar::STORED_SIZE / 2).then do |size|
-      Gtk::IconTheme.get_for_display(Gdk::Display.default).lookup_icon(icon_name, size).then do |paintable|
-        Gtk::Snapshot.new.then do |snapshot|
-          paintable.snapshot(snapshot, size, size)
-          snapshot.to_node
-        end
-      end
+      end.then { |png| Avatar.new(data: png, media_type: 'image/png') }
+    rescue StandardError, GLib::Error => e
+      warn "Could not render avatar #{icon_name}: #{e.message}"
+      nil
     end
-  end
 
-  def choose_file
-    Gtk::FileDialog.new.tap do |dialog|
-      dialog.title = 'Choose Avatar'
-      dialog.filters = image_filters
-      dialog.open(root, nil) do |_, result|
-        open_cropper(dialog.open_finish(result))
-      rescue GLib::Error => e
-        warn "Avatar selection cancelled: #{e.message}"
-      end
-    end
-  end
-
-  def image_filters
-    Gio::ListStore.new(Gtk::FileFilter).tap do |filters|
-      filters.append(Gtk::FileFilter.new.tap do |filter|
-        filter.name = 'Images'
-        filter.add_mime_type('image/*')
-      end)
-    end
-  end
-
-  def open_cropper(file)
-    file.then do |target|
-      if target
-        GdkPixbuf::Pixbuf.new(file: target.path).then do |pixbuf|
-          CropDialog.new(pixbuf, ->(avatar) { select(avatar) }).tap do |cropper|
-            cropper.build
-            cropper.present(root)
+    def self.icon_node(icon_name)
+      (Avatar::STORED_SIZE / 2).then do |size|
+        Gtk::IconTheme.get_for_display(Gdk::Display.default).lookup_icon(icon_name, size).then do |paintable|
+          Gtk::Snapshot.new.then do |snapshot|
+            paintable.snapshot(snapshot, size, size)
+            snapshot.to_node
           end
         end
       end
     end
-  rescue StandardError, GLib::Error => e
-    warn "Could not load image: #{e.message}"
-  end
 
-  def select(avatar)
-    @on_selected.call(avatar)
-    close
-  end
+    def choose_file
+      Gtk::FileDialog.new.tap do |dialog|
+        dialog.title = 'Choose Avatar'
+        dialog.filters = image_filters
+        dialog.open(root, nil) do |_, result|
+          open_cropper(dialog.open_finish(result))
+        rescue GLib::Error => e
+          warn "Avatar selection cancelled: #{e.message}"
+        end
+      end
+    end
+
+    def image_filters
+      Gio::ListStore.new(Gtk::FileFilter).tap do |filters|
+        filters.append(
+          Gtk::FileFilter.new.tap do |filter|
+                  filter.name = 'Images'
+                  filter.add_mime_type('image/*')
+                end,
+        )
+      end
+    end
+
+    def open_cropper(file)
+      file.then do |target|
+        if target
+          GdkPixbuf::Pixbuf.new(file: target.path).then do |pixbuf|
+            CropDialog.new(pixbuf, ->(avatar) { select(avatar) }).tap do |cropper|
+              cropper.build
+              cropper.present(root)
+            end
+          end
+        end
+      end
+    rescue StandardError, GLib::Error => e
+      warn "Could not load image: #{e.message}"
+    end
+
+    def select(avatar)
+      @on_selected.call(avatar)
+      close
+    end
 end

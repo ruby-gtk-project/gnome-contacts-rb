@@ -14,11 +14,11 @@ require 'fileutils'
 class Settings
   DEFAULTS = {
     'did-initial-setup' => false,
-    'sort-on-surname' => false,
-    'window-width' => 800,
-    'window-height' => 600,
-    'window-maximized' => false,
-    'window-fullscreen' => false
+    'sort-on-surname'   => false,
+    'window-width'      => 800,
+    'window-height'     => 600,
+    'window-maximized'  => false,
+    'window-fullscreen' => false,
   }.freeze
 
   def initialize(path: nil)
@@ -42,14 +42,20 @@ class Settings
     method_name = key.tr('-', '_')
     define_method(method_name) { self[key] }
     define_method(:"#{method_name}=") { |value| self[key] = value }
-    define_method(:"#{method_name}?") { self[key] == true } if DEFAULTS[key] == false
+    if DEFAULTS[key] == false
+      define_method(:"#{method_name}?") { self[key] == true }
+    end
   end
 
   # Restores the window geometry recorded by the previous run.
   def apply_to(window)
     window.set_default_size(self['window-width'], self['window-height'])
-    window.maximize if self['window-maximized']
-    window.fullscreen if self['window-fullscreen']
+    if self['window-maximized']
+      window.maximize
+    end
+    if self['window-fullscreen']
+      window.fullscreen
+    end
   end
 
   # Records the window geometry, skipping the size while maximized or
@@ -69,23 +75,23 @@ class Settings
 
   private
 
-  def default_path
-    File.join(
-      ENV.fetch('XDG_CONFIG_HOME', File.expand_path('~/.config')),
-      'ruby-contacts',
-      'settings.json'
-    )
-  end
+    def default_path
+      File.join(
+        ENV.fetch('XDG_CONFIG_HOME', File.expand_path('~/.config')),
+        'ruby-contacts',
+        'settings.json',
+      )
+    end
 
-  def read
-    File.exist?(@path) ? JSON.parse(File.read(@path)) : {}
-  rescue JSON::ParserError => e
-    warn "Error parsing #{@path}: #{e.message}"
-    {}
-  end
+    def read
+      File.exist?(@path) ? JSON.parse(File.read(@path)) : {}
+    rescue JSON::ParserError => e
+      warn "Error parsing #{@path}: #{e.message}"
+      {}
+    end
 
-  def write
-    FileUtils.mkdir_p(File.dirname(@path))
-    File.write(@path, JSON.pretty_generate(@values))
-  end
+    def write
+      FileUtils.mkdir_p(File.dirname(@path))
+      File.write(@path, JSON.pretty_generate(@values))
+    end
 end

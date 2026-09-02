@@ -87,19 +87,19 @@ class TestVCard < Minitest::Test
 
   private
 
-  def contact_hash(**overrides)
-    {
-      id: 'ada-1',
-      name: 'Ada Lovelace',
-      nickname: 'Ada',
-      birthday: Date.new(1815, 12, 10),
-      favorite: true,
-      emails: [{ value: 'ada@analytical.engine', type: 'Work' }],
-      phones: [{ value: '+44 20 7946 0100', type: 'Home' }],
-      urls: [{ value: 'analytical.engine', type: 'Work' }],
-      addresses: [{ value: '12 Marylebone Rd, London', type: 'Home' }],
-      notes: [],
-      roles: [{ organization: 'Analytical Engine Co', title: 'Mathematician', type: 'Work' }]
-    }.merge(overrides)
-  end
+    def contact_hash(**overrides)
+      {
+        id:        'ada-1',
+        name:      'Ada Lovelace',
+        nickname:  'Ada',
+        birthday:  Date.new(1815, 12, 10),
+        favorite:  true,
+        emails:    [{ value: 'ada@analytical.engine', type: 'Work' }],
+        phones:    [{ value: '+44 20 7946 0100', type: 'Home' }],
+        urls:      [{ value: 'analytical.engine', type: 'Work' }],
+        addresses: [{ value: '12 Marylebone Rd, London', type: 'Home' }],
+        notes:     [],
+        roles:     [{ organization: 'Analytical Engine Co', title: 'Mathematician', type: 'Work' }],
+      }.merge(overrides)
+    end
 end

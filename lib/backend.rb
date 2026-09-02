@@ -65,8 +65,8 @@ module Backends
 
     protected
 
-    def generate_id = SecureRandom.uuid
-    def notify_prepared = on_prepared&.call
-    def notify_quiescent = on_quiescent&.call
+      def generate_id = SecureRandom.uuid
+      def notify_prepared = on_prepared&.call
+      def notify_quiescent = on_quiescent&.call
   end
 end

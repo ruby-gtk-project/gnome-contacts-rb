@@ -166,29 +166,29 @@ class ContactSheet
 
   private
 
-  def titled_group(title)
-    Adwaita::PreferencesGroup.new.tap do |group|
-      group.title = title
+    def titled_group(title)
+      Adwaita::PreferencesGroup.new.tap do |group|
+        group.title = title
+      end
     end
-  end
 
   # Builds one row per stored value, or a single placeholder row when the
   # contact has none — the sheet always shows every field.
-  def rows_for(values, icon:, &row_builder)
-    values.reject(&:empty?).then do |present|
-      present.empty? ? [ContactSheetRow.new(nil, nil, icon: icon)] : present.map(&row_builder)
+    def rows_for(values, icon:, &row_builder)
+      values.reject(&:empty?).then do |present|
+        present.empty? ? [ContactSheetRow.new(nil, nil, icon: icon)] : present.map(&row_builder)
+      end
     end
-  end
 
-  def birthday_subtitle = @contact.birthday_today? ? 'Their birthday is today! 🎉' : nil
+    def birthday_subtitle = @contact.birthday_today? ? 'Their birthday is today! 🎉' : nil
 
-  def open_uri(uri)
-    Gtk::UriLauncher.new(uri).launch(nil, nil) do |launcher, result|
-      launcher.launch_finish(result)
-    rescue GLib::Error => e
-      warn "Could not open URI #{uri}: #{e.message}"
+    def open_uri(uri)
+      Gtk::UriLauncher.new(uri).launch(nil, nil) do |launcher, result|
+        launcher.launch_finish(result)
+      rescue GLib::Error => e
+        warn "Could not open URI #{uri}: #{e.message}"
+      end
     end
-  end
 
-  def absolute_url(url) = url.match?(%r{\A[a-z][a-z0-9+.-]*://}i) ? url : "https://#{url}"
+    def absolute_url(url) = url.match?(%r{\A[a-z][a-z0-9+.-]*://}i) ? url : "https://#{url}"
 end

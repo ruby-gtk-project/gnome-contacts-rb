@@ -11,7 +11,7 @@ require 'adwaita'
 #
 class ShortcutsDialog < Adwaita::ShortcutsDialog
   SECTIONS = {
-    'Overview' => [
+    'Overview'                      => [
       ['Show help', 'F1'],
       ['Open menu', 'F10'],
       ['Show preferences', '<Control>comma'],
@@ -26,7 +26,7 @@ class ShortcutsDialog < Adwaita::ShortcutsDialog
     'Editing or creating a contact' => [
       ['Save current changes to contact', '<Control>Return'],
       ['Cancel current changes for contact', 'Escape']
-    ]
+    ],
   }.freeze
 
   def initialize
@@ -44,15 +44,15 @@ class ShortcutsDialog < Adwaita::ShortcutsDialog
 
   private
 
-  def section(title, items)
-    Adwaita::ShortcutsSection.new.tap do |section|
-      section.title = title
-      items.each { |label, accelerator| section.add(item(label, accelerator)) }
+    def section(title, items)
+      Adwaita::ShortcutsSection.new.tap do |section|
+        section.title = title
+        items.each { |label, accelerator| section.add(item(label, accelerator)) }
+      end
     end
-  end
 
   # Positional, not keyword, arguments — even though the error a no-argument
   # new raises advertises the signatures as "title: utf8, accelerator: utf8".
   # Passing them as keywords fails; passing them positionally works.
-  def item(label, accelerator) = Adwaita::ShortcutsItem.new(label, accelerator)
+    def item(label, accelerator) = Adwaita::ShortcutsItem.new(label, accelerator)
 end

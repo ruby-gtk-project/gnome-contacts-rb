@@ -26,7 +26,9 @@ class TestApp < Minitest::Test
 
   def setup
     super
-    skip 'no display available' unless DISPLAY_AVAILABLE
+    unless DISPLAY_AVAILABLE
+      skip 'no display available'
+    end
     @backend = Backends::JsonBackend.new(path: json_path)
     # A unique, non-unique(!) application id per test: without it every test
     # would try to own the same bus name and the second onwards would become a
@@ -35,14 +37,21 @@ class TestApp < Minitest::Test
     # fully driveable, but a test run does not flash a window per example.
     # search_provider: false because every instance would otherwise export the
     # same D-Bus object path; the provider has its own test.
-    @app = App.new(backend: @backend, app_id: "org.gnome.ContactsRb.Test#{object_id}",
-                   flags: :non_unique, present: false, search_provider: false,
-                   settings: Settings.new(path: File.join(@tmpdir, 'settings.json')))
+    @app = App.new(
+      backend:         @backend,
+      app_id:          "org.gnome.ContactsRb.Test#{object_id}",
+      flags:           :non_unique,
+      present:         false,
+      search_provider: false,
+      settings:        Settings.new(path: File.join(@tmpdir, 'settings.json')),
+    )
     @app.build
   end
 
   def teardown
-    @app&.window&.destroy if @app&.instance_variable_get(:@app)
+    if @app&.instance_variable_get(:@app)
+      @app&.window&.destroy
+    end
     super
   end
 
@@ -61,6 +70,52 @@ class TestApp < Minitest::Test
   end
 
   def store = app.instance_variable_get(:@store)
+
+  # Lets GTK lay out after a change that rebuilds the rows: a fresh factory
+  # leaves the list view with no realised children until the next turn of the
+  # loop, so anything reading row widgets has to wait one out.
+  # GTK4 has no Gtk.main_iteration; pumping the default main context is the
+  # equivalent, and it is enough to let a rebuilt list view realise its rows.
+  def settle
+    GLib::MainContext.default.then do |context|
+      64.times do
+        unless context.pending?
+          break
+        end
+
+        context.iteration(false)
+      end
+    end
+  end
+
+  # The tick state of each realised row.
+  def rendered_checkboxes
+    [].tap do |ticks|
+      row = app.contacts_list.list_view.first_child
+      while row
+        ticks << row.first_child.first_child.active?
+        row = row.next_sibling
+      end
+    end
+  end
+
+  # Walks the realised list rows and reads the primary label out of each, so a
+  # test can assert on what the sidebar actually shows rather than on the model.
+  def rendered_row_labels
+    [].tap do |labels|
+      row = app.contacts_list.list_view.first_child
+      while row
+        row.first_child.then do |box|
+          box&.first_child&.next_sibling&.next_sibling.then do |label_box|
+            if label_box.respond_to?(:first_child)
+              labels << label_box.first_child.label
+            end
+          end
+        end
+        row = row.next_sibling
+      end
+    end
+  end
 
   # Runs the block once, inside the application's main loop. Guards against a
   # vacuous pass: if the loop never reaches the block, the test fails rather
@@ -81,7 +136,9 @@ class TestApp < Minitest::Test
       end
     end
     app.app.run([])
-    raise error if error
+    if error
+      raise error
+    end
 
     assert ran, 'the application main loop never ran the test body'
   end
@@ -295,6 +352,40 @@ class TestApp < Minitest::Test
     end
   end
 
+  # Regression: the checkbox was set once at bind time, so marking a row later
+  # highlighted it and bumped the header count while the tick stayed empty.
+  def test_row_checkboxes_follow_the_marked_state
+    in_app do
+      seed('Ada', 'Grace')
+      app.window.activate_action('select-contacts', nil)
+      settle
+
+      assert_equal [false, false], rendered_checkboxes
+      store.multi_selection_model.select_item(1, false)
+      assert_equal [false, true], rendered_checkboxes
+      store.multi_selection_model.select_all
+      assert_equal [true, true], rendered_checkboxes
+    end
+  end
+
+  # Regression: sensitivity is driven by the marked count while selection mode
+  # is on, and leaving it used to leave the whole bottom bar dead.
+  def test_the_action_bar_comes_back_to_life_after_selection_mode
+    in_app do
+      seed('Ada')
+      store.select_contact(store.contacts.first)
+      assert_predicate app.delete_button, :sensitive?
+
+      app.window.activate_action('select-contacts', nil)
+      refute_predicate app.delete_button, :sensitive?, 'nothing marked yet'
+
+      app.window.activate_action('cancel-selection', nil)
+      assert_predicate app.delete_button, :sensitive?
+      assert_predicate app.export_button, :sensitive?
+      assert_predicate app.favorite_button, :sensitive?
+    end
+  end
+
   def test_marked_contacts_drive_the_bulk_action_buttons
     in_app do
       seed('Ada', 'Grace')
@@ -375,6 +466,25 @@ class TestApp < Minitest::Test
       app.window.activate_action('sort-on', GLib::Variant.new('first-name'))
       assert_equal ['Ada Zeta', 'Zoe Alpha'], store.contacts.map(&:name)
       refute app.settings['sort-on-surname']
+    end
+  end
+
+  # Regression: reordering the same objects makes Gtk::ListView move the
+  # existing rows rather than rebind them, so the labels kept showing the
+  # first-name form after switching to surname order.
+  def test_the_row_labels_follow_the_sort_order
+    in_app do
+      store.add_contact(name: 'Ada Zeta', structured_name: { given: 'Ada', family: 'Zeta' })
+      store.add_contact(name: 'Zoe Alpha', structured_name: { given: 'Zoe', family: 'Alpha' })
+      app.contacts_list.update_visible_page
+
+      assert_equal ['Ada Zeta', 'Zoe Alpha'], rendered_row_labels
+
+      app.window.activate_action('sort-on', GLib::Variant.new('surname'))
+      assert_equal ['Alpha, Zoe', 'Zeta, Ada'], rendered_row_labels
+
+      app.window.activate_action('sort-on', GLib::Variant.new('first-name'))
+      assert_equal ['Ada Zeta', 'Zoe Alpha'], rendered_row_labels
     end
   end
 
@@ -462,7 +572,8 @@ class TestApp < Minitest::Test
   def test_setup_window_lists_the_address_books_and_reports_the_choice
     in_app do
       [Backends::JsonBackend.new(path: json_path),
-       Backends::VCardBackend.new(path: vcard_dir)].then do |backends|
+       Backends::VCardBackend.new(path: vcard_dir)
+].then do |backends|
         chosen = nil
         SetupWindow.new(app.app, backends, ->(backend) { chosen = backend }).tap do |setup|
           setup.build
@@ -512,7 +623,8 @@ class TestApp < Minitest::Test
       store.select_contact(store.contacts.first)
       app.contact_pane.sheet.then do |sheet|
         %i[roles_group emails_group phones_group urls_group
-           addresses_group birthday_group nickname_group notes_group].each do |group|
+           addresses_group birthday_group nickname_group notes_group
+].each do |group|
           refute_nil sheet.public_send(group), "#{group} should exist"
         end
       end

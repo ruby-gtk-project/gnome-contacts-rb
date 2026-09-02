@@ -67,8 +67,16 @@ class TestContactStore < Minitest::Test
     store.add_contact(**full_contact_attributes)
     store.add_contact(name: 'Grace Hopper')
 
-    { 'ada' => 1, 'analytical' => 1, 'marylebone' => 1, '7946' => 1,
-      'mathematician' => 1, 'hopper' => 1, '' => 2, 'nobody' => 0 }.each do |query, expected|
+    {
+      'ada'           => 1,
+      'analytical'    => 1,
+      'marylebone'    => 1,
+      '7946'          => 1,
+      'mathematician' => 1,
+      'hopper'        => 1,
+      ''              => 2,
+      'nobody'        => 0,
+    }.each do |query, expected|
       store.query = query
       assert_equal expected, store.n_visible, "query #{query.inspect}"
     end

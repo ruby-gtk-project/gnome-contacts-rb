@@ -25,7 +25,9 @@ module TempData
   end
 
   def teardown
-    FileUtils.remove_entry(@tmpdir) if @tmpdir && File.exist?(@tmpdir)
+    if @tmpdir && File.exist?(@tmpdir)
+      FileUtils.remove_entry(@tmpdir)
+    end
     super
   end
 
@@ -37,20 +39,25 @@ module TempData
   # A contact with every field populated, for round-trip assertions.
   def full_contact_attributes
     {
-      name: 'Ada Lovelace',
-      nickname: 'Ada',
-      birthday: '1815-12-10',
-      favorite: true,
-      alias_name: 'Ada L',
-      structured_name: { given: 'Ada', family: 'Lovelace', additional: 'Byron',
-                         prefixes: 'Ms', suffixes: 'FRS' },
-      im_addresses: [{ value: 'ada@jabber.org', service: 'jabber' }],
-      emails: [{ value: 'ada@analytical.engine', type: 'Work' }],
-      phones: [{ value: '+44 20 7946 0100', type: 'Home' }],
-      urls: [{ value: 'analytical.engine', type: 'Work' }],
-      addresses: [{ value: '12 Marylebone Rd, London', type: 'Home' }],
-      notes: [{ value: "First programmer; wrote note G, 1843", type: 'Personal' }],
-      roles: [{ organization: 'Analytical Engine Co', title: 'Mathematician', type: 'Work' }]
+      name:            'Ada Lovelace',
+      nickname:        'Ada',
+      birthday:        '1815-12-10',
+      favorite:        true,
+      alias_name:      'Ada L',
+      structured_name: {
+        given:      'Ada',
+        family:     'Lovelace',
+        additional: 'Byron',
+        prefixes:   'Ms',
+        suffixes:   'FRS',
+      },
+      im_addresses:    [{ value: 'ada@jabber.org', service: 'jabber' }],
+      emails:          [{ value: 'ada@analytical.engine', type: 'Work' }],
+      phones:          [{ value: '+44 20 7946 0100', type: 'Home' }],
+      urls:            [{ value: 'analytical.engine', type: 'Work' }],
+      addresses:       [{ value: '12 Marylebone Rd, London', type: 'Home' }],
+      notes:           [{ value: "First programmer; wrote note G, 1843", type: 'Personal' }],
+      roles:           [{ organization: 'Analytical Engine Co', title: 'Mathematician', type: 'Work' }],
     }
   end
 end

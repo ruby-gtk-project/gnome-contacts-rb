@@ -14,10 +14,16 @@ class ContactSheetRow < Adwaita::ActionRow
   def initialize(value, subtitle = nil, icon: nil)
     super()
     self.title = display_value(value)
-    self.subtitle = subtitle.to_s unless subtitle.to_s.empty?
+    unless subtitle.to_s.empty?
+      self.subtitle = subtitle.to_s
+    end
     self.title_selectable = !blank?(value)
-    add_prefix(Gtk::Image.new(icon_name: icon)) if icon
-    add_css_class('dim-label') if blank?(value)
+    if icon
+      add_prefix(Gtk::Image.new(icon_name: icon))
+    end
+    if blank?(value)
+      add_css_class('dim-label')
+    end
   end
 
   # Returns self so callers can keep adding buttons in one expression.
@@ -26,7 +32,9 @@ class ContactSheetRow < Adwaita::ActionRow
       Gtk::Button.new.tap do |button|
         button.icon_name = icon_name
         button.valign = :center
-        button.tooltip_text = tooltip if tooltip
+        if tooltip
+          button.tooltip_text = tooltip
+        end
         button.add_css_class('flat')
         button.signal_connect('clicked') { action.call }
         row.add_suffix(button)
@@ -38,7 +46,7 @@ class ContactSheetRow < Adwaita::ActionRow
 
   # An empty field still gets a row, per the "show all fields" rule — it just
   # renders as a dimmed placeholder instead of a blank line.
-  def display_value(value) = blank?(value) ? PLACEHOLDER : value.to_s
+    def display_value(value) = blank?(value) ? PLACEHOLDER : value.to_s
 
-  def blank?(value) = value.to_s.strip.empty?
+    def blank?(value) = value.to_s.strip.empty?
 end

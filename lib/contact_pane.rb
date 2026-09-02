@@ -109,9 +109,13 @@ class ContactPane < Adwaita::Bin
     @editing.then do |was_editing|
       if was_editing
         @editing = false
-        @editor.collect_data.then { |data| @on_save.call(data) } unless cancel
+        unless cancel
+          @editor.collect_data.then { |data| @on_save.call(data) }
+        end
         remove_contact_editor
-        show_contact(@store.selected_contact) if cancel
+        if cancel
+          show_contact(@store.selected_contact)
+        end
       end
     end
   end
@@ -171,17 +175,17 @@ class ContactPane < Adwaita::Bin
 
   private
 
-  def open_editor(contact)
-    remove_contact_editor
+    def open_editor(contact)
+      remove_contact_editor
 
-    ContactEditor.new(contact: contact).tap do |ed|
-      @editor = ed
-      contact_editor_box.append(ed.build)
+      ContactEditor.new(contact: contact).tap do |ed|
+        @editor = ed
+        contact_editor_box.append(ed.build)
+      end
+
+      stack.visible_child_name = 'contact-editor-page'
+      scroll_to_top(contact_editor_page)
     end
-
-    stack.visible_child_name = 'contact-editor-page'
-    scroll_to_top(contact_editor_page)
-  end
 
   # A newly shown contact starts at the top of its sheet, rather than
   # inheriting the scroll position of whoever was selected before.
@@ -190,46 +194,46 @@ class ContactPane < Adwaita::Bin
   # the scrolled window has not allocated it yet, and GTK then scrolls to
   # whichever selectable label takes focus — which lands the sheet at the
   # bottom. Resetting after layout wins that race.
-  def scroll_to_top(scroller)
-    GLib::Idle.add do
-      scroller.vadjustment.value = scroller.vadjustment.lower
-      false
+    def scroll_to_top(scroller)
+      GLib::Idle.add do
+        scroller.vadjustment.value = scroller.vadjustment.lower
+        false
+      end
     end
-  end
 
   # Upstream shows one suggestion at a time; showing the strongest match keeps
   # the sheet from turning into a wall of prompts.
-  def add_suggestions(suggestions)
-    Array(suggestions).first.then do |suggestion|
-      if suggestion && @on_link
-        LinkSuggestionGrid.new(suggestion, @on_link, @on_reject).tap do |grid|
-          @suggestion_grids << grid
-          suggestions_box.child = grid.build
+    def add_suggestions(suggestions)
+      Array(suggestions).first.then do |suggestion|
+        if suggestion && @on_link
+          LinkSuggestionGrid.new(suggestion, @on_link, @on_reject).tap do |grid|
+            @suggestion_grids << grid
+            suggestions_box.child = grid.build
+          end
         end
       end
     end
-  end
 
-  def remove_suggestions
-    suggestions_box.child = nil
-    @suggestion_grids.clear
-  end
+    def remove_suggestions
+      suggestions_box.child = nil
+      @suggestion_grids.clear
+    end
 
-  def remove_contact_sheet
-    @sheet.then do |sheet|
-      if sheet
-        contact_sheet_clamp.child = nil
-        @sheet = nil
+    def remove_contact_sheet
+      @sheet.then do |sheet|
+        if sheet
+          contact_sheet_clamp.child = nil
+          @sheet = nil
+        end
       end
     end
-  end
 
-  def remove_contact_editor
-    @editor.then do |editor|
-      if editor
-        contact_editor_box.remove(editor.container)
-        @editor = nil
+    def remove_contact_editor
+      @editor.then do |editor|
+        if editor
+          contact_editor_box.remove(editor.container)
+          @editor = nil
+        end
       end
     end
-  end
 end

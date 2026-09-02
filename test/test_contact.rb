@@ -74,8 +74,14 @@ class TestContact < Minitest::Test
   end
 
   def test_from_h_reads_the_legacy_single_value_format
-    Contact.from_h(id: '1', name: 'Ada', email: 'a@b.com', phone: '555',
-                   organization: 'Acme', title: 'Engineer').then do |contact|
+    Contact.from_h(
+      id:           '1',
+      name:         'Ada',
+      email:        'a@b.com',
+      phone:        '555',
+      organization: 'Acme',
+      title:        'Engineer',
+    ).then do |contact|
       assert_equal ['a@b.com'], contact.emails.map(&:value)
       assert_equal ['555'], contact.phones.map(&:value)
       assert_equal 'Engineer at Acme', contact.role_display
@@ -101,5 +107,5 @@ class TestContact < Minitest::Test
 
   private
 
-  def build(**attrs) = Contact.from_h({ id: 'test' }.merge(attrs))
+    def build(**attrs) = Contact.from_h({ id: 'test' }.merge(attrs))
 end

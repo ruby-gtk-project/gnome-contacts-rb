@@ -38,31 +38,56 @@ module VCard
     [].tap do |out|
       out << 'BEGIN:VCARD'
       out << 'VERSION:4.0'
-      out << "UID:#{escape(contact[:id])}" if contact[:id]
+      if contact[:id]
+        out << "UID:#{escape(contact[:id])}"
+      end
       name_lines(out, contact)
-      out << "NICKNAME:#{escape(contact[:nickname])}" unless blank?(contact[:nickname])
-      TYPED_PROPERTIES.each { |field, property| typed_lines(out, contact[field], property, field) }
+      unless blank?(contact[:nickname])
+        out << "NICKNAME:#{escape(contact[:nickname])}"
+      end
+      TYPED_PROPERTIES.each { |field, property| typed_lines(
+        out,
+        contact[field],
+        property,
+        field,
+      ) }
       address_lines(out, contact[:addresses])
       im_lines(out, contact[:im_addresses])
       role_lines(out, contact[:roles])
-      out << "BDAY:#{format_birthday(contact[:birthday])}" unless blank?(format_birthday(contact[:birthday]))
+      unless blank?(format_birthday(contact[:birthday]))
+        out << "BDAY:#{format_birthday(contact[:birthday])}"
+      end
       note_lines(out, contact[:notes])
       photo_line(out, contact[:avatar])
-      out << 'CATEGORIES:Favourite' if contact[:favorite]
+      if contact[:favorite]
+        out << 'CATEGORIES:Favourite'
+      end
       out << 'END:VCARD'
     end
   end
 
   def name_lines(out, contact)
-    display = blank?(contact[:name]) ? nil : contact[:name]
+    if blank?(contact[:name])
+      display = nil
+    else
+      display = contact[:name]
+    end
     structured = StructuredName.coerce(contact[:structured_name])
-    structured = StructuredName.from_full_name(display) if structured.empty? && display
+    if structured.empty? && display
+      structured = StructuredName.from_full_name(display)
+    end
 
-    out << "FN:#{escape(display || structured.to_s)}" unless blank?(display || structured.to_s)
-    out << "N:#{structured_name_value(structured)}" unless structured.empty?
+    unless blank?(display || structured.to_s)
+      out << "FN:#{escape(display || structured.to_s)}"
+    end
+    unless structured.empty?
+      out << "N:#{structured_name_value(structured)}"
+    end
     # Upstream's AliasChunk; there is no standard property, so use the
     # X-EVOLUTION one Evolution Data Server itself writes.
-    out << "X-EVOLUTION-ALIAS:#{escape(contact[:alias])}" unless blank?(contact[:alias])
+    unless blank?(contact[:alias])
+      out << "X-EVOLUTION-ALIAS:#{escape(contact[:alias])}"
+    end
   end
 
   def structured_name_value(structured)
@@ -88,7 +113,9 @@ module VCard
   def im_lines(out, values)
     Array(values).each do |entry|
       symbolize(entry.respond_to?(:to_h) && !entry.is_a?(Hash) ? entry.to_h : entry).then do |data|
-        next if blank?(data[:value])
+        if blank?(data[:value])
+          next
+        end
 
         # IMPP carries a URI whose scheme is the service, which is how
         # Evolution and Folks round-trip IM addresses.
@@ -103,15 +130,21 @@ module VCard
 
   def photo_line(out, avatar)
     Avatar.coerce(avatar).then do |photo|
-      out << "PHOTO:data:#{photo.media_type};base64,#{Base64.strict_encode64(photo.data)}" if photo && !photo.empty?
+      if photo && !photo.empty?
+        out << "PHOTO:data:#{photo.media_type};base64,#{Base64.strict_encode64(photo.data)}"
+      end
     end
   end
 
   def role_lines(out, roles)
     Array(roles).each do |role|
       to_hash(role).then do |data|
-        out << "ORG:#{escape(data[:organization])}" unless blank?(data[:organization])
-        out << "TITLE:#{escape(data[:title])}" unless blank?(data[:title])
+        unless blank?(data[:organization])
+          out << "ORG:#{escape(data[:organization])}"
+        end
+        unless blank?(data[:title])
+          out << "TITLE:#{escape(data[:title])}"
+        end
       end
     end
   end
@@ -119,7 +152,9 @@ module VCard
   def each_value(values)
     Array(values).each do |entry|
       to_hash(entry).then do |data|
-        yield(data[:value], data[:type]) unless blank?(data[:value])
+        unless blank?(data[:value])
+          yield(data[:value], data[:type])
+        end
       end
     end
   end
@@ -160,7 +195,10 @@ module VCard
       when 'TITLE' then contact[:_titles] << unescape(value)
       when 'BDAY' then contact[:birthday] = parse_birthday(value)
       when 'PHOTO', 'LOGO' then contact[:avatar] ||= photo_from(params, value)
-      when 'CATEGORIES' then contact[:favorite] = true if unescape(value).downcase.include?('favourite')
+      when 'CATEGORIES'
+        if unescape(value).downcase.include?('favourite')
+          contact[:favorite] = true
+        end
       end
     end
   end
@@ -201,8 +239,10 @@ module VCard
         # service in the property itself ("X-JABBER: someone").
         raw.include?(':') && property == 'IMPP' ? raw.split(':', 2) : [nil, raw]
       end.then do |scheme, address|
-        { service: (declared || scheme || property.sub(/\AX-/, '').downcase.tr('_', '-')).to_s,
-          value: address.to_s.strip }
+        {
+          service: (declared || scheme || property.sub(/\AX-/, '').downcase.tr('_', '-')).to_s,
+          value:   address.to_s.strip,
+        }
       end
     end
   end
@@ -224,22 +264,39 @@ module VCard
   end
 
   def address_from_components(value)
-    unescape_components(value).values_at(0, 1, 2, 3, 4, 5, 6)
+    unescape_components(value).values_at(
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+    )
                               .map(&:to_s).map(&:strip).reject(&:empty?).join(', ')
   end
 
   def structured_name_from(value)
     unescape_components(value).then do |parts|
-      StructuredName.new(family: parts[0].to_s, given: parts[1].to_s, additional: parts[2].to_s,
-                         prefixes: parts[3].to_s, suffixes: parts[4].to_s).to_h
+      StructuredName.new(
+        family:     parts[0].to_s,
+        given:      parts[1].to_s,
+        additional: parts[2].to_s,
+        prefixes:   parts[3].to_s,
+        suffixes:   parts[4].to_s,
+      ).to_h
     end
   end
 
   # FN and N each fill in for the other when only one is present.
   def derive_name(contact)
     StructuredName.coerce(contact[:structured_name]).then do |structured|
-      contact[:name] = structured.to_s if blank?(contact[:name]) && !structured.empty?
-      contact[:structured_name] = StructuredName.from_full_name(contact[:name]).to_h if structured.empty?
+      if blank?(contact[:name]) && !structured.empty?
+        contact[:name] = structured.to_s
+      end
+      if structured.empty?
+        contact[:structured_name] = StructuredName.from_full_name(contact[:name]).to_h
+      end
     end
   end
 
@@ -279,7 +336,10 @@ module VCard
           case line.upcase
           when 'BEGIN:VCARD' then current.clear
           when 'END:VCARD' then cards << current.dup
-          else current << line unless line.empty?
+          else
+            unless line.empty?
+              current << line
+            end
           end
         end
       end
@@ -321,10 +381,25 @@ module VCard
   def blank?(value) = value.to_s.strip.empty?
 
   def blank_contact
-    { id: nil, name: '', alias: '', nickname: '', birthday: nil, favorite: false,
-      structured_name: nil, avatar: nil,
-      emails: [], phones: [], urls: [], addresses: [], notes: [], roles: [], im_addresses: [],
-      _orgs: [], _titles: [] }
+    {
+      id:              nil,
+      name:            '',
+      alias:           '',
+      nickname:        '',
+      birthday:        nil,
+      favorite:        false,
+      structured_name: nil,
+      avatar:          nil,
+      emails:          [],
+      phones:          [],
+      urls:            [],
+      addresses:       [],
+      notes:           [],
+      roles:           [],
+      im_addresses:    [],
+      _orgs:           [],
+      _titles:         [],
+    }
   end
 
   def meaningful?(contact)

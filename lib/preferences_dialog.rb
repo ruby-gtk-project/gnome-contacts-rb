@@ -41,7 +41,11 @@ class PreferencesDialog < Adwaita::PreferencesDialog
           group.add(sort_row)
 
           sort_row.tap do |row|
-            row.selected = @settings['sort-on-surname'] ? 1 : 0
+            if @settings['sort-on-surname']
+              row.selected = 1
+            else
+              row.selected = 0
+            end
             row.signal_connect('notify::selected') { @on_sort_changed.call(row.selected == 1) }
           end
         end

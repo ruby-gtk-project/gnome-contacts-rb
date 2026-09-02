@@ -126,9 +126,10 @@ class LinkSuggestionGrid
 
   # Upstream shows an email, then a phone number, then a role — whichever the
   # suggested contact has first — to help tell two similar people apart.
-  def extra_description
-    [@suggestion.emails.first&.value,
-     @suggestion.phones.first&.value,
-     @suggestion.role_display].map(&:to_s).find { |v| !v.strip.empty? }.to_s
-  end
+    def extra_description
+      [@suggestion.emails.first&.value,
+       @suggestion.phones.first&.value,
+       @suggestion.role_display
+].map(&:to_s).find { |v| !v.strip.empty? }.to_s
+    end
 end

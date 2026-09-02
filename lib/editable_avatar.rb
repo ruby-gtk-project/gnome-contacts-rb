@@ -67,12 +67,12 @@ class EditableAvatar
 
   private
 
-  def open_selector
-    AvatarSelector.new(@contact, method(:on_selected)).tap do |selector|
-      selector.build
-      selector.present(overlay.root)
+    def open_selector
+      AvatarSelector.new(@contact, method(:on_selected)).tap do |selector|
+        selector.build
+        selector.present(overlay.root)
+      end
     end
-  end
 
-  def on_selected(avatar_data) = @on_selected.call(avatar_data)
+    def on_selected(avatar_data) = @on_selected.call(avatar_data)
 end

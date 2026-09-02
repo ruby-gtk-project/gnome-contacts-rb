@@ -70,33 +70,39 @@ class TypeSet
   # Upstream's general_data: the fallback set, used for addresses and URLs.
   GENERAL = new('General', [['Home', %w[HOME]], ['Work', %w[WORK]]]).freeze
 
-  EMAIL = new('Emails', [
-                ['Personal', %w[PERSONAL]],
-                ['Home', %w[HOME]],
-                ['Work', %w[WORK]]
-              ]).freeze
+  EMAIL = new(
+    'Emails',
+    [
+      ['Personal', %w[PERSONAL]],
+                    ['Home', %w[HOME]],
+                    ['Work', %w[WORK]]
+    ],
+  ).freeze
 
   # Ordered most-specific-first, as upstream requires for lookup to work.
-  PHONE = new('Phones', [
-                ['Assistant', %w[X-EVOLUTION-ASSISTANT]],
-                ['Work Fax', %w[WORK FAX]],
-                ['Work', %w[WORK VOICE]],
-                ['Work', %w[WORK]],
-                ['Callback', %w[X-EVOLUTION-CALLBACK]],
-                ['Car', %w[CAR]],
-                ['Company', %w[X-EVOLUTION-COMPANY]],
-                ['Home Fax', %w[HOME FAX]],
-                ['Home', %w[HOME VOICE]],
-                ['Home', %w[HOME]],
-                ['ISDN', %w[ISDN]],
-                ['Mobile', %w[CELL]],
-                ['Other', %w[VOICE]],
-                ['Fax', %w[FAX]],
-                ['Pager', %w[PAGER]],
-                ['Radio', %w[X-EVOLUTION-RADIO]],
-                ['Telex', %w[X-EVOLUTION-TELEX]],
-                ['TTY', %w[X-EVOLUTION-TTYTDD]]
-              ]).freeze
+  PHONE = new(
+    'Phones',
+    [
+      ['Assistant', %w[X-EVOLUTION-ASSISTANT]],
+                    ['Work Fax', %w[WORK FAX]],
+                    ['Work', %w[WORK VOICE]],
+                    ['Work', %w[WORK]],
+                    ['Callback', %w[X-EVOLUTION-CALLBACK]],
+                    ['Car', %w[CAR]],
+                    ['Company', %w[X-EVOLUTION-COMPANY]],
+                    ['Home Fax', %w[HOME FAX]],
+                    ['Home', %w[HOME VOICE]],
+                    ['Home', %w[HOME]],
+                    ['ISDN', %w[ISDN]],
+                    ['Mobile', %w[CELL]],
+                    ['Other', %w[VOICE]],
+                    ['Fax', %w[FAX]],
+                    ['Pager', %w[PAGER]],
+                    ['Radio', %w[X-EVOLUTION-RADIO]],
+                    ['Telex', %w[X-EVOLUTION-TELEX]],
+                    ['TTY', %w[X-EVOLUTION-TTYTDD]]
+    ],
+  ).freeze
 
   # Which set applies to which contact field.
   def self.for_field(field)

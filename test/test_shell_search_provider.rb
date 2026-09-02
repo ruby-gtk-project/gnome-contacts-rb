@@ -8,11 +8,17 @@ class TestShellSearchProvider < Minitest::Test
 
   def store
     @store ||= ContactStore.new(backend: Backends::JsonBackend.new(path: json_path)).tap do |s|
-      s.add_contact(id: 'ada', name: 'Ada Lovelace',
-                    emails: [{ value: 'ada@analytical.engine', type: 'Work' }],
-                    roles: [{ organization: 'Analytical Engine Co', title: 'Mathematician', type: 'Work' }])
-      s.add_contact(id: 'grace', name: 'Grace Hopper',
-                    phones: [{ value: '+1 555 0100', type: 'Mobile' }])
+      s.add_contact(
+        id:     'ada',
+        name:   'Ada Lovelace',
+        emails: [{ value: 'ada@analytical.engine', type: 'Work' }],
+        roles:  [{ organization: 'Analytical Engine Co', title: 'Mathematician', type: 'Work' }],
+      )
+      s.add_contact(
+        id:     'grace',
+        name:   'Grace Hopper',
+        phones: [{ value: '+1 555 0100', type: 'Mobile' }],
+      )
     end
   end
 
@@ -67,8 +73,11 @@ class TestShellSearchProvider < Minitest::Test
   def test_activate_and_launch_call_back
     activated = nil
     launched = nil
-    ShellSearchProvider.new(store, on_activate: ->(id) { activated = id },
-                                   on_launch: ->(q) { launched = q }).then do |p|
+    ShellSearchProvider.new(
+      store,
+      on_activate: ->(id) { activated = id },
+      on_launch:   ->(q) { launched = q },
+    ).then do |p|
       p.activate_result('ada', [], 0)
       p.launch_search(%w[ada lovelace], 0)
       assert_equal 'ada', activated

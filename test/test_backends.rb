@@ -66,9 +66,9 @@ module BackendContract
 
   private
 
-  def contact_hash
-    Contact.from_h(full_contact_attributes.merge(id: 'ada-1')).to_h
-  end
+    def contact_hash
+      Contact.from_h(full_contact_attributes.merge(id: 'ada-1')).to_h
+    end
 end
 
 class TestJsonBackend < Minitest::Test

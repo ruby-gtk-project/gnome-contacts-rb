@@ -101,85 +101,93 @@ class ShellSearchProvider
 
   private
 
-  def handle_method_call(_connection, _sender, _path, _interface, method_name, parameters, invocation)
-    case method_name
-    when 'GetInitialResultSet'
-      invocation.return_value(string_array(initial_result_set(parameters.get_child_value(0).to_a)))
-    when 'GetSubsearchResultSet'
-      invocation.return_value(string_array(subsearch_result_set(parameters.get_child_value(0).to_a,
-                                                                parameters.get_child_value(1).to_a)))
-    when 'GetResultMetas'
-      invocation.return_value(metas_variant(result_metas(parameters.get_child_value(0).to_a)))
-    when 'ActivateResult'
-      activate_result(parameters.get_child_value(0).get_string, [], 0)
-      invocation.return_value(nil)
-    when 'LaunchSearch'
-      launch_search(parameters.get_child_value(0).to_a, 0)
-      invocation.return_value(nil)
-    else
-      invocation.return_dbus_error("#{INTERFACE}.UnknownMethod", "Unknown method #{method_name}")
+    def handle_method_call(_connection, _sender, _path, _interface, method_name, parameters, invocation)
+      case method_name
+      when 'GetInitialResultSet'
+        invocation.return_value(string_array(initial_result_set(parameters.get_child_value(0).to_a)))
+      when 'GetSubsearchResultSet'
+        invocation.return_value(
+          string_array(
+            subsearch_result_set(
+              parameters.get_child_value(0).to_a,
+              parameters.get_child_value(1).to_a,
+            ),
+          ),
+        )
+      when 'GetResultMetas'
+        invocation.return_value(metas_variant(result_metas(parameters.get_child_value(0).to_a)))
+      when 'ActivateResult'
+        activate_result(parameters.get_child_value(0).get_string, [], 0)
+        invocation.return_value(nil)
+      when 'LaunchSearch'
+        launch_search(parameters.get_child_value(0).to_a, 0)
+        invocation.return_value(nil)
+      else
+        invocation.return_dbus_error("#{INTERFACE}.UnknownMethod", "Unknown method #{method_name}")
+      end
+    rescue StandardError => e
+      invocation.return_dbus_error("#{INTERFACE}.Error", e.message)
     end
-  rescue StandardError => e
-    invocation.return_dbus_error("#{INTERFACE}.Error", e.message)
-  end
 
-  def normalized(terms) = Array(terms).map { |t| t.to_s.downcase.strip }.reject(&:empty?)
+    def normalized(terms) = Array(terms).map { |t| t.to_s.downcase.strip }.reject(&:empty?)
 
-  def matching(needles)
-    @store.contacts.select { |contact| matches_all?(contact, needles) }
-  end
+    def matching(needles)
+      @store.contacts.select { |contact| matches_all?(contact, needles) }
+    end
 
   # Every term must appear somewhere in the contact, matching the in-app search.
-  def matches_all?(contact, needles)
-    haystack(contact).then { |text| needles.all? { |needle| text.include?(needle) } }
-  end
+    def matches_all?(contact, needles)
+      haystack(contact).then { |text| needles.all? { |needle| text.include?(needle) } }
+    end
 
-  def haystack(contact)
-    @store.send(:searchable_fields, contact).join(' ').downcase
-  end
+    def haystack(contact)
+      @store.send(:searchable_fields, contact).join(' ').downcase
+    end
 
-  def contacts_by_id(ids)
-    @store.contacts.each_with_object({}) { |c, by_id| by_id[c.id] = c }
-          .then { |by_id| Array(ids).filter_map { |id| by_id[id.to_s] } }
-  end
+    def contacts_by_id(ids)
+      @store.contacts.each_with_object({}) { |c, by_id| by_id[c.id] = c }
+            .then { |by_id| Array(ids).filter_map { |id| by_id[id.to_s] } }
+    end
 
   # The shell renders these: an id, a name and a one-line description.
-  def meta_for(contact)
-    { 'id' => contact.id.to_s,
-      'name' => contact.display_name,
-      'description' => description_for(contact) }
-  end
+    def meta_for(contact)
+      {
+        'id'          => contact.id.to_s,
+        'name'        => contact.display_name,
+        'description' => description_for(contact),
+      }
+    end
 
-  def description_for(contact)
-    [contact.role_display, contact.emails.first&.value, contact.phones.first&.value]
-      .map(&:to_s).find { |v| !v.strip.empty? }.to_s
-  end
+    def description_for(contact)
+      [contact.role_display, contact.emails.first&.value, contact.phones.first&.value]
+        .map(&:to_s).find { |v| !v.strip.empty? }.to_s
+    end
 
   # Reply variants are built by parsing GVariant text.
   #
   # GLib::Variant.new cannot construct a dictionary in these bindings — it
   # raises NotImplementedError for a{sv} — and it cannot build the tuple a
   # D-Bus reply needs either. GLib::Variant.parse(text, type) handles both.
-  def string_array(values)
-    GLib::Variant.parse("([#{values.map { |v| quote(v) }.join(', ')}],)", '(as)')
-  end
+    def string_array(values)
+      GLib::Variant.parse("([#{values.map { |v| quote(v) }.join(', ')}],)", '(as)')
+    end
 
-  def metas_variant(metas)
-    GLib::Variant.parse("(#{metas_text(metas)},)", '(aa{sv})')
-  end
+    def metas_variant(metas)
+      GLib::Variant.parse("(#{metas_text(metas)},)", '(aa{sv})')
+    end
 
-  def metas_text(metas)
-    "[#{metas.map { |meta| meta_text(meta) }.join(', ')}]"
-  end
+    def metas_text(metas)
+      "[#{metas.map { |meta| meta_text(meta) }.join(', ')}]"
+    end
 
-  def meta_text(meta)
-    "{#{meta.map { |key, value| "#{quote(key)}: <#{quote(value)}>" }.join(', ')}}"
-  end
+    def meta_text(meta)
+      "{#{meta.map { |key, value| "#{quote(key)}: <#{quote(value)}>" }.join(', ')}}"
+    end
 
   # GVariant text format uses the same string escapes as C. The block form of
   # gsub is deliberate: backslashes in a replacement string are themselves
   # interpreted, which makes the escaping of an escape character unreadable.
-  ESCAPES = { '\\' => '\\\\', '"' => '\\"' }.freeze
+    ESCAPES = { '\\' => '\\\\', '"' => '\\"' }.freeze
 
-  def quote(value) = %("#{value.to_s.gsub(/[\\"]/) { |char| ESCAPES.fetch(char) }}")
+    def quote(value) = %("#{value.to_s.gsub(/[\\"]/) { |char| ESCAPES.fetch(char) }}")
 end

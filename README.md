@@ -22,14 +22,22 @@ bin/gnome-contacts-rb --version
 ## Testing
 
 ```sh
-rake test
+rake test                                                     # 129 examples
+env -u DISPLAY -u WAYLAND_DISPLAY ruby test/drive_main_window.rb   # 55 checks + screenshots
 ```
 
-126 examples covering the model, the store, both backends, the vCard
-serialiser, the type sets, the undo stack, the shell search provider, settings
-persistence, and the live widget tree. The UI tests build the real window and
-drive it through its `GAction`s; they skip themselves when no display is
-available, and never map a window on screen.
+`rake test` covers the model, the store, both backends, the vCard serialiser,
+the type sets, the undo stack, the shell search provider, settings persistence
+and the live widget tree.
+
+`test/drive_main_window.rb` runs the whole app headlessly — GTK4 renders to an
+offscreen surface, so no Xvfb is needed — steps through creating, editing,
+searching, sorting, selecting, linking, deleting, undoing, exporting and
+importing, and writes a PNG of each state to `tmp/shots/`. **Read the
+screenshots.** Three bugs in this port were found by looking at them rather
+than by asserting: list rows that kept their old label after the sort order
+changed, selection checkboxes that never ticked, and a bottom action bar left
+insensitive after leaving selection mode.
 
 ## Installing the dependencies
 
@@ -111,6 +119,8 @@ lib/operations.rb        Undoable delete / link / unlink / import
 lib/settings.rb          Persisted settings
 lib/shell_search_provider.rb  org.gnome.Shell.SearchProvider2
 lib/vcard.rb             vCard 4.0 serialiser and parser
+test/gtk_driver.rb       Headless UI driver (from the ruby-gtk-testing skill)
+test/drive_main_window.rb  End-to-end drive with screenshots
 lib/backend.rb           Backend interface
 lib/json_backend.rb      Single JSON file
 lib/vcard_backend.rb     Directory of .vcf files
@@ -203,3 +213,21 @@ context.
 **An exception raised inside a GTK signal handler can take the process down**
 with SIGSEGV rather than surfacing as a Ruby error. When a test crashes instead
 of failing, look for a `NoMethodError` inside a handler.
+
+**A Contact removed from a `Gio::ListStore` can become a dangling pointer.**
+The store's reference was what kept it alive, and the Ruby wrapper does not
+hold one of its own, so re-inserting a removed object or reading one back from
+a model afterwards segfaults. `ContactStore` therefore keeps its own ordered
+Array of every live contact, routes every read through that, and records undo
+information as plain hashes rather than objects.
+
+**`Gtk::ListView` moves rows rather than rebinding them.** When a splice
+reorders the *same* objects, the existing row widgets are repositioned and the
+factory's `bind` never runs again — so any label computed from something other
+than the item itself goes stale. Handing the list view a fresh factory forces a
+rebuild. For per-row state that changes without a rebind (the selection tick),
+bind the property instead: `item.bind_property('selected', checkbox, 'active',
+:sync_create)`.
+
+**GTK4 has no `Gtk.main_iteration`.** Pump `GLib::MainContext.default` with
+`#pending?` and `#iteration(false)` when a test needs layout to settle.

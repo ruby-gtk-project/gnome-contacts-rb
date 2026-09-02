@@ -114,38 +114,42 @@ class SetupWindow
 
   # One selectable row per available backend; the radio buttons share a group
   # so exactly one is ever active.
-  def address_book_row(backend)
-    Adwaita::ActionRow.new.tap do |row|
-      row.title = backend.display_name
-      row.subtitle = backend.location
-      row.activatable = true
+    def address_book_row(backend)
+      Adwaita::ActionRow.new.tap do |row|
+        row.title = backend.display_name
+        row.subtitle = backend.location
+        row.activatable = true
 
-      selection_button(backend).tap do |button|
-        row.add_prefix(button)
-        row.activatable_widget = button
+        selection_button(backend).tap do |button|
+          row.add_prefix(button)
+          row.activatable_widget = button
+        end
       end
     end
-  end
 
-  def selection_button(backend)
-    Gtk::CheckButton.new.tap do |button|
-      button.valign = :center
-      button.group = @first_button if @first_button
-      button.active = backend.equal?(@selected)
-      @first_button ||= button
+    def selection_button(backend)
+      Gtk::CheckButton.new.tap do |button|
+        button.valign = :center
+        if @first_button
+          button.group = @first_button
+        end
+        button.active = backend.equal?(@selected)
+        @first_button ||= button
 
-      button.signal_connect('toggled') do
-        @selected = backend if button.active?
-        done_button.sensitive = !@selected.nil?
+        button.signal_connect('toggled') do
+          if button.active?
+            @selected = backend
+          end
+          done_button.sensitive = !@selected.nil?
+        end
       end
     end
-  end
 
   # The window is closed rather than destroyed, and the callback runs first:
   # the caller defers its own work to an idle tick, so by the time the window
   # goes away nothing is still reading from it.
-  def finish
-    @on_done.call(@selected)
-    window.close
-  end
+    def finish
+      @on_done.call(@selected)
+      window.close
+    end
 end

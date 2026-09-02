@@ -78,44 +78,51 @@ class QrCodeDialog < Adwaita::Dialog
   private
 
   # The QR payload is the contact's own vCard, exactly what exporting it gives.
-  def vcard_text = "#{VCard.dump(@contact.to_h)}#{VCard::EOL}"
+    def vcard_text = "#{VCard.dump(@contact.to_h)}#{VCard::EOL}"
 
-  def qr_texture
-    RQRCodeCore::QRCode.new(vcard_text, level: :m, mode: :byte_8bit).then do |qr|
-      Gdk::Texture.new(GLib::Bytes.new(render_png(qr)))
+    def qr_texture
+      RQRCodeCore::QRCode.new(vcard_text, level: :m, mode: :byte_8bit).then do |qr|
+        Gdk::Texture.new(GLib::Bytes.new(render_png(qr)))
+      end
+    rescue StandardError, GLib::Error => e
+      warn "Could not create QR code: #{e.message}"
+      nil
     end
-  rescue StandardError, GLib::Error => e
-    warn "Could not create QR code: #{e.message}"
-    nil
-  end
 
-  def render_png(qr)
-    (qr.module_count + (QUIET_ZONE * 2)).then do |total|
-      [IMAGE_SIZE / total, 1].max.then do |pixel|
-        Cairo::ImageSurface.new(:rgb24, total * pixel, total * pixel).then do |surface|
-          Cairo::Context.new(surface).tap { |cr| paint_modules(cr, qr, pixel) }
-          StringIO.new.tap { |io| surface.write_to_png(io) }.string
+    def render_png(qr)
+      (qr.module_count + (QUIET_ZONE * 2)).then do |total|
+        [IMAGE_SIZE / total, 1].max.then do |pixel|
+          Cairo::ImageSurface.new(:rgb24, total * pixel, total * pixel).then do |surface|
+            Cairo::Context.new(surface).tap { |cr| paint_modules(cr, qr, pixel) }
+            StringIO.new.tap { |io| surface.write_to_png(io) }.string
+          end
         end
       end
     end
-  end
 
-  def paint_modules(cairo, qr, pixel)
-    cairo.set_source_rgb(1, 1, 1)
-    cairo.paint
-    cairo.set_source_rgb(0, 0, 0)
+    def paint_modules(cairo, qr, pixel)
+      cairo.set_source_rgb(1, 1, 1)
+      cairo.paint
+      cairo.set_source_rgb(0, 0, 0)
 
-    qr.modules.each_with_index do |row, y|
-      row.each_with_index do |dark, x|
-        cairo.rectangle((x + QUIET_ZONE) * pixel, (y + QUIET_ZONE) * pixel, pixel, pixel) if dark
+      qr.modules.each_with_index do |row, y|
+        row.each_with_index do |dark, x|
+          if dark
+            cairo.rectangle(
+              (x + QUIET_ZONE) * pixel,
+              (y + QUIET_ZONE) * pixel,
+              pixel,
+              pixel,
+            )
+          end
+        end
       end
+      cairo.fill
     end
-    cairo.fill
-  end
 
   # There is no GLib::Markup in these bindings, so escape the five characters
   # Pango markup treats specially.
-  MARKUP_ESCAPES = { '&' => '&amp;', '<' => '&lt;', '>' => '&gt;', '"' => '&quot;', "'" => '&#39;' }.freeze
+    MARKUP_ESCAPES = { '&' => '&amp;', '<' => '&lt;', '>' => '&gt;', '"' => '&quot;', "'" => '&#39;' }.freeze
 
-  def escape(text) = text.to_s.gsub(/[&<>"']/) { |char| MARKUP_ESCAPES.fetch(char) }
+    def escape(text) = text.to_s.gsub(/[&<>"']/) { |char| MARKUP_ESCAPES.fetch(char) }
 end

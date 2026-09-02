@@ -51,8 +51,11 @@ class TestOperations < Minitest::Test
 
   def test_link_operation_merges_fields_into_the_first_contact
     store.add_contact(name: 'Ada Lovelace', emails: [{ value: 'ada@work.com', type: 'Work' }])
-    store.add_contact(name: 'Ada Lovelace', phones: [{ value: '555', type: 'Mobile' }],
-                      emails: [{ value: 'ada@home.com', type: 'Home' }])
+    store.add_contact(
+      name:   'Ada Lovelace',
+      phones: [{ value: '555', type: 'Mobile' }],
+      emails: [{ value: 'ada@home.com', type: 'Home' }],
+    )
 
     Operations::LinkOperation.new(store, store.contacts).tap do |operation|
       operations.execute(operation)
@@ -79,8 +82,11 @@ class TestOperations < Minitest::Test
 
   def test_link_keeps_a_favourite_and_the_first_avatar
     store.add_contact(name: 'Ada')
-    store.add_contact(name: 'Ada', favorite: true,
-                      avatar: { data: Base64.strict_encode64('PNGDATA'), media_type: 'image/png' })
+    store.add_contact(
+      name:     'Ada',
+      favorite: true,
+      avatar:   { data: Base64.strict_encode64('PNGDATA'), media_type: 'image/png' },
+    )
     operations.execute(Operations::LinkOperation.new(store, store.contacts))
 
     store.contacts.first.then do |merged|

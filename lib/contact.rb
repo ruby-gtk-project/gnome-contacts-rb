@@ -21,13 +21,17 @@ class TypedValue
 
   # Older releases of this port stored lower-case type ids rather than the
   # display labels upstream's TypeSet uses. Map them forward on read.
-  LEGACY_TYPES = { 'personal' => 'Personal', 'work' => 'Work',
-                   'home' => 'Home', 'other' => 'Other' }.freeze
+  LEGACY_TYPES = {
+    'personal' => 'Personal',
+    'work'     => 'Work',
+    'home'     => 'Home',
+    'other'    => 'Other',
+  }.freeze
 
   def self.from_h(hash)
     new(
       value: hash[:value] || hash['value'] || '',
-      type: normalize_type(hash[:type] || hash['type'])
+      type:  normalize_type(hash[:type] || hash['type']),
     )
   end
 
@@ -55,8 +59,8 @@ end
 ImAddress = Data.define(:value, :service) do
   def self.from_h(hash)
     new(
-      value: hash[:value] || hash['value'] || '',
-      service: (hash[:service] || hash['service'] || 'jabber').to_s
+      value:   hash[:value] || hash['value'] || '',
+      service: (hash[:service] || hash['service'] || 'jabber').to_s,
     )
   end
 
@@ -78,8 +82,8 @@ Role = Data.define(:organization, :title, :type) do
   def self.from_h(hash)
     new(
       organization: hash[:organization] || hash['organization'] || '',
-      title: hash[:title] || hash['title'] || '',
-      type: TypedValue.normalize_type(hash[:type] || hash['type'] || 'Work')
+      title:        hash[:title] || hash['title'] || '',
+      type:         TypedValue.normalize_type(hash[:type] || hash['type'] || 'Work'),
     )
   end
 
@@ -102,7 +106,13 @@ end
 # StructuredName is a full name split into its constituent parts.
 # Ported from upstream's core/contacts-structured-name-chunk.vala, which wraps
 # Folks.StructuredName; the field order matches vCard's N property.
-StructuredName = Data.define(:family, :given, :additional, :prefixes, :suffixes)
+StructuredName = Data.define(
+  :family,
+  :given,
+  :additional,
+  :prefixes,
+  :suffixes,
+)
 
 # Reopened so FIELDS is StructuredName::FIELDS (see TypedValue above).
 class StructuredName
@@ -130,8 +140,11 @@ class StructuredName
       case parts.length
       when 0 then empty
       when 1 then empty.with(given: parts.first)
-      else empty.with(given: parts.first, family: parts.last,
-                      additional: parts[1..-2].join(' '))
+      else empty.with(
+        given:      parts.first,
+        family:     parts.last,
+        additional: parts[1..-2].join(' '),
+      )
       end
     end
   end
@@ -281,7 +294,13 @@ class Contact < GLib::Object
   # First and last initial, which is what Adwaita::Avatar derives from a name.
   def initials
     display_name.split.then do |parts|
-      [parts.first, (parts.last if parts.length > 1)].compact.map { |part| part[0] }.join.upcase
+      parts.first(1).then do |first|
+        if parts.length > 1
+          first + [parts.last]
+        else
+          first
+        end
+      end.map { |part| part[0] }.join.upcase
     end
   end
 
@@ -310,44 +329,44 @@ class Contact < GLib::Object
 
   def to_h
     {
-      id: @id,
-      name: @name,
-      alias: @alias_name,
-      nickname: @nickname,
-      birthday: @birthday.is_a?(Date) ? @birthday.iso8601 : @birthday,
-      favorite: @favorite,
+      id:              @id,
+      name:            @name,
+      alias:           @alias_name,
+      nickname:        @nickname,
+      birthday:        @birthday.is_a?(Date) ? @birthday.iso8601 : @birthday,
+      favorite:        @favorite,
       structured_name: @structured_name&.to_h,
-      avatar: @avatar&.to_h,
-      emails: @emails.reject(&:empty?).map(&:to_h),
-      phones: @phones.reject(&:empty?).map(&:to_h),
-      urls: @urls.reject(&:empty?).map(&:to_h),
-      addresses: @addresses.reject(&:empty?).map(&:to_h),
-      notes: @notes.reject(&:empty?).map(&:to_h),
-      roles: @roles.reject(&:empty?).map(&:to_h),
-      im_addresses: @im_addresses.reject(&:empty?).map(&:to_h)
+      avatar:          @avatar&.to_h,
+      emails:          @emails.reject(&:empty?).map(&:to_h),
+      phones:          @phones.reject(&:empty?).map(&:to_h),
+      urls:            @urls.reject(&:empty?).map(&:to_h),
+      addresses:       @addresses.reject(&:empty?).map(&:to_h),
+      notes:           @notes.reject(&:empty?).map(&:to_h),
+      roles:           @roles.reject(&:empty?).map(&:to_h),
+      im_addresses:    @im_addresses.reject(&:empty?).map(&:to_h),
     }
   end
 
   def self.from_h(hash)
     new(
-      id: hash[:id] || hash['id'],
-      name: (hash[:name] || hash['name'] || '').to_s,
+      id:              hash[:id] || hash['id'],
+      name:            (hash[:name] || hash['name'] || '').to_s,
       # Accepts both spellings: "alias" is the serialised key (vCard/JSON),
       # "alias_name" is what Ruby callers pass because alias is a keyword.
-      alias_name: (hash[:alias_name] || hash['alias_name'] || hash[:alias] || hash['alias'] || '').to_s,
-      nickname: (hash[:nickname] || hash['nickname'] || '').to_s,
-      birthday: parse_birthday(hash[:birthday] || hash['birthday']),
-      favorite: hash[:favorite] || hash['favorite'] || false,
+      alias_name:      (hash[:alias_name] || hash['alias_name'] || hash[:alias] || hash['alias'] || '').to_s,
+      nickname:        (hash[:nickname] || hash['nickname'] || '').to_s,
+      birthday:        parse_birthday(hash[:birthday] || hash['birthday']),
+      favorite:        hash[:favorite] || hash['favorite'] || false,
       structured_name: parse_structured_name(hash),
-      avatar: Avatar.coerce(hash[:avatar] || hash['avatar']),
-      emails: parse_multi_value(hash, :emails, :email),
-      phones: parse_multi_value(hash, :phones, :phone),
-      urls: parse_multi_value(hash, :urls, :url),
-      addresses: parse_multi_value(hash, :addresses, :address),
-      notes: parse_multi_value(hash, :notes, :notes),
-      roles: parse_roles(hash),
-      im_addresses: parse_im_addresses(hash),
-      address_book: hash[:address_book] || hash['address_book']
+      avatar:          Avatar.coerce(hash[:avatar] || hash['avatar']),
+      emails:          parse_multi_value(hash, :emails, :email),
+      phones:          parse_multi_value(hash, :phones, :phone),
+      urls:            parse_multi_value(hash, :urls, :url),
+      addresses:       parse_multi_value(hash, :addresses, :address),
+      notes:           parse_multi_value(hash, :notes, :notes),
+      roles:           parse_roles(hash),
+      im_addresses:    parse_im_addresses(hash),
+      address_book:    hash[:address_book] || hash['address_book'],
     )
   end
 
@@ -355,7 +374,8 @@ class Contact < GLib::Object
   # releases of this port wrote (email: "a@b.com" rather than emails: [...]).
   def self.parse_multi_value(hash, array_key, legacy_key)
     [hash[array_key] || hash[array_key.to_s],
-     hash[legacy_key] || hash[legacy_key.to_s]].then do |array_val, legacy_val|
+     hash[legacy_key] || hash[legacy_key.to_s]
+].then do |array_val, legacy_val|
       if array_val.is_a?(Array)
         array_val.map { |v| TypedValue.coerce(v) }
       elsif legacy_val.is_a?(String) && !legacy_val.strip.empty?

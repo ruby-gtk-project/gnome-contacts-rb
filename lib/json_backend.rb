@@ -45,7 +45,9 @@ module Backends
           data['contacts'].to_a
             .find_index { |c| c['id'] == contact['id'] }
             .then do |index|
-              raise "Contact not found: #{contact['id']}" unless index
+              unless index
+                raise "Contact not found: #{contact['id']}"
+              end
               data['contacts'][index] = contact
               write_file(data)
             end
@@ -57,7 +59,9 @@ module Backends
       read_file.tap do |data|
         data['contacts'].to_a.tap do |contacts|
           contacts.reject! { |c| c['id'] == id }.tap do |deleted|
-            write_file(data.merge('contacts' => contacts)) if deleted
+            if deleted
+              write_file(data.merge('contacts' => contacts))
+            end
           end
         end
       end['contacts'].to_a.none? { |c| c['id'] == id }
@@ -65,42 +69,42 @@ module Backends
 
     private
 
-    def default_path
-      File.join(
-        ENV.fetch('XDG_DATA_HOME', File.expand_path('~/.local/share')),
-        'ruby-contacts',
-        'contacts.json'
-      )
-    end
+      def default_path
+        File.join(
+          ENV.fetch('XDG_DATA_HOME', File.expand_path('~/.local/share')),
+          'ruby-contacts',
+          'contacts.json',
+        )
+      end
 
-    def ensure_directory
-      FileUtils.mkdir_p(File.dirname(@path))
-    end
+      def ensure_directory
+        FileUtils.mkdir_p(File.dirname(@path))
+      end
 
-    def read_file
-      File.exist?(@path)
-        .then { |exists| exists ? JSON.parse(File.read(@path)) : empty_data }
-    rescue JSON::ParserError => e
-      warn "Error parsing #{@path}: #{e.message}"
-      empty_data
-    end
+      def read_file
+        File.exist?(@path)
+          .then { |exists| exists ? JSON.parse(File.read(@path)) : empty_data }
+      rescue JSON::ParserError => e
+        warn "Error parsing #{@path}: #{e.message}"
+        empty_data
+      end
 
-    def empty_data = { 'version' => VERSION, 'contacts' => [] }
+      def empty_data = { 'version' => VERSION, 'contacts' => [] }
 
-    def write_file(data)
-      ensure_directory
-      File.write(@path, JSON.pretty_generate(data.merge('version' => VERSION)))
-    end
+      def write_file(data)
+        ensure_directory
+        File.write(@path, JSON.pretty_generate(data.merge('version' => VERSION)))
+      end
 
     # Deep, so nested values (emails, roles, ...) come back symbol-keyed and
     # match what VCardBackend returns. Contact.from_h accepts either, but the
     # two backends agreeing keeps callers from having to care which is in use.
-    def symbolize_keys(value)
-      case value
-      when Hash then value.to_h { |key, val| [key.to_sym, symbolize_keys(val)] }
-      when Array then value.map { |val| symbolize_keys(val) }
-      else value
+      def symbolize_keys(value)
+        case value
+        when Hash then value.to_h { |key, val| [key.to_sym, symbolize_keys(val)] }
+        when Array then value.map { |val| symbolize_keys(val) }
+        else value
+        end
       end
-    end
   end
 end
