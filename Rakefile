@@ -12,5 +12,3 @@ desc 'Run the application (BACKEND=json|vcard)'
 task :run do
   sh "ruby bin/gnome-contacts-rb #{ENV.fetch('BACKEND', 'json')}"
 end
-
-task default: :test
