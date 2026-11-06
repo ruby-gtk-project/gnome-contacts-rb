@@ -18,7 +18,7 @@ placeholder, not the port; `missing` = no `lib/*.rb` yet.
 | `src/contacts-main-window.vala` + `data/ui/contacts-main-window.blp` | `lib/main.rb` (`App`) | main window | done |
 | `src/contacts-setup-window.vala` + `data/ui/contacts-setup-window.blp` | `lib/setup_window.rb` | first-run wizard window | done |
 | `src/contacts-ui-state.vala` | `lib/main.rb` (`NORMAL`/`SHOWING`/`CREATING`/`UPDATING` constants) | UI-state enum | done (folded in) |
-| — (scaffold) | `lib/gnome_contacts/application.rb`, `lib/gnome_contacts.rb`, `exe/gnome-contacts` | leftover scaffold stub app (status-page placeholder) | **stub — dead code, not wired to the real entry point** (`exe/gnome-contacts-rb` boots `App` from `lib/main.rb` instead) |
+| — (scaffold) | ~~`lib/gnome_contacts/application.rb`, `lib/gnome_contacts.rb`, `exe/gnome-contacts`~~ | leftover scaffold stub app (status-page placeholder) | **removed** — it was dead code, unreachable from the real entry point (`exe/gnome-contacts-rb`, which boots `App` from `lib/main.rb`), and its presence in `exe/` made the flake's launcher auto-detection (`builtins.head (builtins.attrNames (builtins.readDir ./exe))`) pick the wrong binary |
 
 ## Pages / panes
 
@@ -72,7 +72,7 @@ placeholder, not the port; `missing` = no `lib/*.rb` yet.
 | `src/contacts-chunk-filter.vala`, `contacts-chunk-empty-filter.vala`, `contacts-chunk-property-filter.vala`, `contacts-chunk-sorter.vala`, `contacts-manual-filter.vala`, `contacts-persona-filter.vala`, `contacts-persona-sorter.vala`, `contacts-individual-sorter.vala`, `contacts-individual-section-sorter.vala`, `contacts-query-filter.vala`, `contacts-contact-selection-model.vala` | `lib/contact_store.rb` | list filter/sort/selection chain | done — collapsed into one `ListStore -> FilterListModel -> SingleSelection` chain with Ruby-side sort (works around a `Gtk::CustomSorter`/`Gio::ListStore#sort` binding bug, per in-file comment) |
 | `src/contacts-settings.vala` + `src/org.gnome.Contacts.gschema.xml` | `lib/settings.rb` | app settings | done — backed by a JSON file under `XDG_CONFIG_HOME` instead of GSettings (no system schema install step) |
 | `src/contacts-esd-setup.vala` | `lib/accounts_list.rb` / `lib/setup_window.rb` (implicit) | EDS address-book provisioning on first run | **missing as its own file** — folded informally into the setup flow; EDS itself is out of scope (no EDS backend), but confirm the first-run gating logic (`did-initial-setup`) still matches |
-| `src/contacts-utils.vala` | — | misc helper functions | **not mapped to any single file** — needs a pass to confirm each helper landed somewhere (e.g. `lib/contact.rb`, `lib/vcard.rb`) rather than being silently dropped |
+| `src/contacts-utils.vala` | — | misc helper functions | **surveyed, nothing to port** — every function but two is Folks/EDS persona-store plumbing (`persona_is_main`, `has_main_persona`, `is_ignorable`, `can_remove_personas`, `personas_as_list_model`, `format_persona_store_name*`, `persona_is_google*`) with no counterpart in a port that has no Folks and one `Contact` per entry rather than personas linked under an `Individual`; `get_stock_avatars` (scan `pixmaps/faces` for face images) is superseded by `AvatarSelector::STOCK_ICONS` (symbolic icon names from the icon theme, a different and simpler stock-avatar source); `get_first` and `string_is_non_empty_closure` are one-line GLib-closure conveniences with direct Ruby equivalents (`collection.first`, `!str.to_s.empty?`) wherever a caller needs them, not helpers worth a shared file |
 | `src/contacts-shell-search-provider.vala` + `data/org.gnome.Contacts.search-provider.ini.in` + `data/org.gnome.Contacts.SearchProvider.service.in` | `lib/shell_search_provider.rb` | GNOME Shell search provider (D-Bus) | done |
 | Persistence backends (no direct upstream equivalent — upstream only has EDS) | `lib/backend.rb`, `lib/json_backend.rb`, `lib/vcard_backend.rb` | storage backends | done — port-specific, replaces Evolution Data Server |
 
@@ -91,16 +91,14 @@ placeholder, not the port; `missing` = no `lib/*.rb` yet.
 
 ## Gaps and open questions surfaced by this survey
 
-1. **Dead scaffold code**: `lib/gnome_contacts/application.rb`, `lib/gnome_contacts.rb`,
-   and `exe/gnome-contacts` are the original scaffold's placeholder app (a window
-   with a status page) and are not reachable from the real entry point
-   (`exe/gnome-contacts-rb`, which boots `App` from `lib/main.rb`). They should
-   either be deleted or wired to delegate to `App`, so the gem's declared
-   executable list (`spec.executables = ["gnome-contacts-rb"]` in the gemspec)
-   doesn't silently keep a second, unported entry point around.
-2. **`src/contacts-utils.vala`** has no single corresponding `lib/*.rb` and was
-   not traced helper-by-helper in this pass — needs a follow-up read to confirm
-   its functions landed somewhere rather than being dropped.
+1. **Dead scaffold code** — resolved: `lib/gnome_contacts/application.rb`,
+   `lib/gnome_contacts.rb`, and `exe/gnome-contacts` are deleted. They were
+   never reachable from the real entry point (`exe/gnome-contacts-rb`, which
+   boots `App` from `lib/main.rb`), and `gnome-contacts-rb.gemspec` only ever
+   declared `exe/gnome-contacts-rb` as the executable.
+2. **`src/contacts-utils.vala`** — resolved, see the Data model / IO table
+   above: traced helper-by-helper; nothing was silently dropped, the port
+   simply has no Folks/persona layer for most of it to apply to.
 3. **`src/contacts-esd-setup.vala`** (EDS-specific first-run address-book setup)
    has no dedicated port file; the first-run gating (`did-initial-setup`) and
    address-book listing appear to be covered by `lib/setup_window.rb` and
@@ -131,9 +129,21 @@ placeholder, not the port; `missing` = no `lib/*.rb` yet.
   `shortcuts_dialog.rb`, `type_combo_row.rb`, `type_set.rb`, `vcard.rb`)
 - Port-only files with no upstream counterpart (new persistence layer,
   replacing EDS): `backend.rb`, `json_backend.rb`, `vcard_backend.rb`
-- Stub/dead files not part of the port: `gnome_contacts.rb`,
-  `gnome_contacts/application.rb`
+- Stub/dead files `gnome_contacts.rb` and `gnome_contacts/application.rb`,
+  plus the unreachable `exe/gnome-contacts`, have been deleted.
+- Runtime dependencies are now declared in the gemspec and wired through
+  `nix/Gemfile` / `nix/gemset.nix` / `flake.nix`: the toolkit itself
+  (`glib2`, `gtk4`, `adwaita`), `base64` and `rqrcode_core` (already used by
+  `contact.rb` and `qr_code_dialog.rb` but missing from the runtime closure,
+  which broke `exe/gnome-contacts-rb` under a bundled install), and the five
+  binding gems this round adds (`ashpd`, `edataserver`, `glycin`,
+  `libglycin-gtk4`, `goa-rb`) — proved to load and populate their namespace
+  (`Ashpd`, `EDataServer`, `Gly`, `GlyGtk4`, `Goa`) under `nix develop`.
+  None of the five are wired into component behaviour yet beyond the one
+  comment update in `avatar_selector.rb` noting what `Ashpd::Camera` does and
+  does not provide (a presence check, not a capture) — see "remaining" in
+  this round's report for what full integration of each would still need.
 - No user-facing upstream window/dialog/page is currently fully **missing**
   from `lib/`; the gaps found are at the sub-component level (icons, CSS,
-  menu model, EDS-setup detail, `contacts-utils.vala`, translations) and are
-  listed above for follow-up passes.
+  menu model, EDS-setup detail, translations) and are listed above for
+  follow-up passes.

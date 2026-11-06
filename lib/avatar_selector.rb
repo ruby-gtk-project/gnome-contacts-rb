@@ -7,9 +7,11 @@ require_relative 'crop_dialog'
 # AvatarSelector offers a grid of stock avatars plus a "choose a file" button.
 #
 # Ported from upstream's src/contacts-avatar-selector.vala. Upstream also
-# offers a camera source through the XDG desktop portal; there is no portal
-# binding in ruby-gnome, so that button is not present — a file chosen here is
-# handed to CropDialog exactly as upstream does.
+# offers a camera source through the XDG desktop portal. The `ashpd` gem binds
+# that portal, but only as far as `Ashpd::Camera.present?` — a presence check,
+# not a way to open the camera stream and grab a frame — so there is still
+# nothing to wire a capture button to. A file chosen here is handed to
+# CropDialog exactly as upstream does.
 #
 class AvatarSelector < Adwaita::Dialog
   ICON_SIZE = 64

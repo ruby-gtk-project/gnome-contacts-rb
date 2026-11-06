@@ -8,5 +8,13 @@
 # a packaged app's closure.
 source "https://rubygems.org"
 
-gem "adwaita"
+gem "base64"
+gem "glib2"
 gem "gtk4"
+gem "adwaita"
+gem "ashpd"
+gem "edataserver"
+gem "glycin"
+gem "libglycin-gtk4"
+gem "goa-rb"
+gem "rqrcode_core"

@@ -96,6 +96,28 @@ Gem::Specification.new do |spec|
   spec.executables = ["gnome-contacts-rb"]
   spec.require_paths = ["lib"]
 
+  # Runtime
+  # Ruby 3.4 dropped base64 from the default gems; lib/contact.rb decodes
+  # avatar bytes with it.
+  spec.add_dependency("base64")
+  # The GTK4/Libadwaita toolkit itself.
+  spec.add_dependency("glib2")
+  spec.add_dependency("gtk4")
+  spec.add_dependency("adwaita")
+  # XDG Desktop Portal client (camera presence, screenshot, trash, settings,
+  # account info) — a precompiled Rust extension, no typelib involved.
+  spec.add_dependency("ashpd")
+  # Evolution Data Server bindings: address books and calendars.
+  spec.add_dependency("edataserver")
+  # Sandboxed image loading, and its GTK4 integration (decoded image -> GdkTexture).
+  spec.add_dependency("glycin")
+  spec.add_dependency("libglycin-gtk4")
+  # GNOME Online Accounts bindings.
+  spec.add_dependency("goa-rb")
+  # QR code generation for the "Share as QR Code" dialog. Upstream links
+  # against libqrencode, which has no Ruby binding; rqrcode_core is pure Ruby.
+  spec.add_dependency("rqrcode_core", "~> 2.0")
+
   # NOTE: It is preferable to list development dependencies in the gemspec due to increased
   #       visibility and discoverability.
   #       However, development dependencies in gemspec will install on
