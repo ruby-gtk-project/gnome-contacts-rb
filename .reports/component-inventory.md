@@ -1,136 +1,139 @@
-# gnome-contacts-rb — upstream component inventory
+# Component inventory — gnome-contacts-rb vs. upstream (GNOME Contacts)
 
-Survey of GNOME Contacts (`origin/main`, Vala + blueprint) against the Ruby
-port on `ruby`. Produced with the `component-identification` skill: the
-`.blp` files were read first (they are the component map), then the Vala that
-backs them, then the port's `lib/*.rb`.
+Surveyed against `origin/main` (Vala + blueprint upstream). This is a
+file-level map: for widget/CSS/signal-level detail on any one row, run the
+`component-identification` skill's scan against that upstream file and the
+corresponding `lib/*.rb`.
 
-## Totals
+Legend for **Status**: `done` = a `lib/*.rb` exists and names this upstream
+file as its source in its header comment; `partial` = exists but the header
+or code shows acknowledged gaps; `stub` = file exists but is scaffold
+placeholder, not the port; `missing` = no `lib/*.rb` yet.
 
-Scan of upstream `src/` + `data/` versus the port's `lib/`, filtered to the
-files actually in each tree (the shared scratchpad was polluted by sibling
-workers; rows were re-joined against `git ls-tree origin/main`):
+## Windows
 
-| | upstream | port |
-|---|---:|---:|
-| widget rows / distinct types | 269 / 49 | 160 / 44 |
-| CSS classes (rows / distinct) | 55 / 32 | 30 / 14 |
-| signals (rows / distinct) | 53 / 28 | 42 / 19 |
-| actions (rows / distinct) | 44 / 33 | 33 / 14 |
-| controllers | 6 / 3 | 1 / 1 |
+| Upstream | → lib/ | Kind | Status |
+|---|---|---|---|
+| `src/contacts-app.vala` | `lib/main.rb` (`App`) | application class | done |
+| `src/contacts-main-window.vala` + `data/ui/contacts-main-window.blp` | `lib/main.rb` (`App`) | main window | done |
+| `src/contacts-setup-window.vala` + `data/ui/contacts-setup-window.blp` | `lib/setup_window.rb` | first-run wizard window | done |
+| `src/contacts-ui-state.vala` | `lib/main.rb` (`NORMAL`/`SHOWING`/`CREATING`/`UPDATING` constants) | UI-state enum | done (folded in) |
+| — (scaffold) | `lib/gnome_contacts/application.rb`, `lib/gnome_contacts.rb`, `exe/gnome-contacts` | leftover scaffold stub app (status-page placeholder) | **stub — dead code, not wired to the real entry point** (`exe/gnome-contacts-rb` boots `App` from `lib/main.rb` instead) |
 
-Upstream source: 9 825 lines of Vala across 71 files, 1 021 lines of blueprint
-across 13 files, 1 C widget (`cc-crop-area.c`), 1 GSettings schema, 1 GResource
-manifest, 79 `po/` locales. Port: 5 917 lines of Ruby across 29 files.
+## Pages / panes
 
-The port is close to full parity on structure. What is missing is almost
-entirely **chrome**: the translations, the packaging data, and a handful of
-action/accelerator mismatches at the edges.
+| Upstream | → lib/ | Kind | Status |
+|---|---|---|---|
+| `src/contacts-contact-list.vala` | `lib/contact_list.rb` | sidebar list page | done |
+| `src/contacts-contact-pane.vala` + `data/ui/contacts-contact-pane.blp` | `lib/contact_pane.rb` | detail pane (sheet/editor switch) | done |
+| `src/contacts-contact-sheet.vala` | `lib/contact_sheet.rb` | read-only contact sheet | done |
+| `src/contacts-contact-sheet-row.vala` + `data/ui/contacts-contact-sheet-row.blp` | `lib/contact_sheet_row.rb` | one field row on the sheet | done |
+| `src/contacts-contact-editor.vala` | `lib/contact_editor.rb` | in-place edit form | done |
+| `src/contacts-contact-editor.vala` (`BirthdayEditor` inner class) + `data/ui/contacts-birthday-editor.blp` | `lib/birthday_editor.rb` | birthday-entry sub-dialog | done |
+| `src/contacts-link-suggestion-grid.vala` + `data/ui/contacts-link-suggestion-grid.blp` | `lib/link_suggestion_grid.rb` | "possible duplicate" suggestion bar | done |
 
-> **Refreshed 2026-11-02.** Commit `744f3b2b` extracted the avatar, the type
-> combo row, the birthday editor and the accounts list into their own files,
-> and `lib/main.rb` has since grown the CSS provider, the `Adw.Breakpoint`, the
-> loading spinner and the alert dialogs. The `exists` column and the gap
-> section below reflect the tree as of that refresh; the totals table above is
-> from the original survey and is now low on the port side (`lib/` is 6 577
-> lines across 31 files).
+## Dialogs
 
-## Component map
+| Upstream | → lib/ | Kind | Status |
+|---|---|---|---|
+| `src/contacts-avatar-selector.vala` + `data/ui/contacts-avatar-selector.blp` | `lib/avatar_selector.rb` | avatar-picker dialog | partial — no camera/portal source (no XDG portal binding in ruby-gnome; noted in file header) |
+| `src/contacts-crop-dialog.vala` + `data/ui/contacts-crop-dialog.blp` + `src/cc-crop-area.c`/`.h` | `lib/crop_dialog.rb` | square-crop dialog | done |
+| `src/contacts-import-dialog.vala` + `data/ui/contacts-import-dialog.blp` | `lib/import_dialog.rb` | vCard import preview dialog | done |
+| `src/contacts-preferences-window.vala` + `data/ui/contacts-preferences-window.blp` | `lib/preferences_dialog.rb` | address-book preferences dialog | partial — upstream lists live EDS sources with enable/disable toggles; port reports the single active backend only, by design (no EDS) |
+| `src/contacts-qr-code-dialog.vala` | `lib/qr_code_dialog.rb` | vCard-as-QR dialog | partial — upstream uses libqrencode (no Ruby binding); port uses `rqrcode_core` instead |
+| `src/contacts-shortcuts-dialog.vala`(none found; shortcuts come from blueprint) + `data/ui/contacts-shortcuts-dialog.blp` | `lib/shortcuts_dialog.rb` | keyboard-shortcuts window | done |
+| `src/contacts-editable-avatar.vala` + `data/ui/contacts-editable-avatar.blp` | `lib/editable_avatar.rb` | avatar-with-camera-badge widget (opens `AvatarSelector`) | done |
 
-Order: the application, the first-run window, the main window and its pages,
-then the dialogs, then the non-widget layers.
+## Rows / small widgets
 
-| # | upstream file(s) | port file | kind | exists |
-|--:|---|---|---|:--:|
-| 1 | `src/main.vala`, `src/contacts-app.vala` | `lib/main.rb` | application | yes |
-| 2 | `src/contacts-setup-window.vala` + `data/ui/contacts-setup-window.blp` | `lib/setup_window.rb` | window | yes |
-| 3 | `src/contacts-accounts-list.vala` | `lib/accounts_list.rb` | widget (prefs group) | yes |
-| 4 | `src/contacts-main-window.vala` + `data/ui/contacts-main-window.blp` | `lib/main.rb` | window | yes |
-| 5 | `menu primary_menu_popover` (main-window.blp) | `lib/main.rb` | menu | yes |
-| 6 | `menu contact_hamburger_menu_popover` (main-window.blp) | `lib/main.rb` | menu | yes |
-| 7 | `ShortcutController` (main-window.blp) | `lib/main.rb` | keyboard shortcuts | partial |
-| 8 | `Adw.Breakpoint` (main-window.blp) | `lib/main.rb` | adaptive breakpoint | yes |
-| 9 | `Adw.Spinner` loading page (main-window.blp) | `lib/contact_list.rb` | loading state | yes |
-| 10 | `src/contacts-contact-list.vala` | `lib/contact_list.rb` | widget (ListView) | yes |
-| 11 | `src/contacts-contact-selection-model.vala` | `lib/contact_store.rb` | model | yes |
-| 12 | `src/contacts-contact-pane.vala` + `data/ui/contacts-contact-pane.blp` | `lib/contact_pane.rb` | page (stack) | yes |
-| 13 | `src/contacts-contact-sheet.vala` | `lib/contact_sheet.rb` | widget | yes |
-| 14 | `src/contacts-contact-sheet-row.vala` + `data/ui/contacts-contact-sheet-row.blp` | `lib/contact_sheet_row.rb` | row | yes |
-| 15 | `src/contacts-avatar.vala` | `lib/avatar.rb` | widget | yes |
-| 16 | `src/contacts-contact-editor.vala` | `lib/contact_editor.rb` | page (form) | yes |
-| 17 | `data/ui/contacts-birthday-editor.blp` + `BirthdayEditor` in `contacts-contact-editor.vala` | `lib/birthday_editor.rb` | dialog | yes |
-| 18 | `src/contacts-type-combo.vala` | `lib/type_combo_row.rb` | row (ComboRow) | yes |
-| 19 | `src/contacts-editable-avatar.vala` + `data/ui/contacts-editable-avatar.blp` | `lib/editable_avatar.rb` | widget | yes |
-| 20 | `src/contacts-avatar-selector.vala` + `data/ui/contacts-avatar-selector.blp` | `lib/avatar_selector.rb` | dialog | partial |
-| 21 | `src/contacts-crop-dialog.vala` + `data/ui/contacts-crop-dialog.blp` + `src/cc-crop-area.c/.h` | `lib/crop_dialog.rb` | dialog | yes |
-| 22 | `src/contacts-qr-code-dialog.vala` + `data/ui/contacts-qr-code-dialog.blp` | `lib/qr_code_dialog.rb` | dialog | yes |
-| 23 | `src/contacts-link-suggestion-grid.vala` + `data/ui/contacts-link-suggestion-grid.blp` | `lib/link_suggestion_grid.rb` | widget | yes |
-| 24 | `src/contacts-import-dialog.vala` + `data/ui/contacts-import-dialog.blp` | `lib/import_dialog.rb` | dialog | yes |
-| 25 | `src/contacts-preferences-window.vala` + `data/ui/contacts-preferences-window.blp` | `lib/preferences_dialog.rb` | dialog | partial |
-| 26 | `data/ui/contacts-shortcuts-dialog.blp` | `lib/shortcuts_dialog.rb` | dialog | yes |
-| 27 | `Adw.AboutDialog` in `contacts-app.vala` | `lib/main.rb` | dialog | yes |
-| 28 | `Adw.AlertDialog`s in `contacts-app.vala` / `contacts-main-window.vala` / `contacts-avatar-selector.vala` | `lib/main.rb` | error states | yes |
-| 29 | `src/contacts-operation*.vala`, `contacts-{delete,link,unlink,import}-operation.vala`, `contacts-operation-list.vala` | `lib/operations.rb` | undo stack + toasts | partial |
-| 30 | `src/contacts-shell-search-provider.vala` + `data/org.gnome.Contacts.search-provider.ini.in` + `.service.in` | `lib/shell_search_provider.rb` | D-Bus service | yes |
-| 31 | `src/contacts-settings.vala` + `src/org.gnome.Contacts.gschema.xml` | `lib/settings.rb` | settings | yes (JSON) |
-| 32 | `src/core/contacts-contact.vala` + the 14 `*-chunk.vala` files | `lib/contact.rb` | model | yes |
-| 33 | `src/core/contacts-type-set.vala`, `-type-descriptor.vala`, `-vcard-type-mapping.vala` | `lib/type_set.rb` | model | yes |
-| 34 | `src/contacts-{chunk,chunk-empty,chunk-property,query,manual,persona}-filter.vala`, `*-sorter.vala`, `contacts-store.vala` | `lib/contact_store.rb` | model | yes |
-| 35 | `src/io/*` | `lib/vcard.rb`, `lib/vcard_backend.rb`, `lib/json_backend.rb`, `lib/backend.rb` | io | yes |
-| 36 | `src/contacts-im-service.vala` | `lib/im_service.rb` | model | yes |
-| 37 | `src/contacts-ui-state.vala` | `lib/main.rb` (state constants) | enum | yes |
-| 38 | `src/contacts-utils.vala` | folded into callers | helpers | partial |
-| 39 | `src/contacts-esd-setup.vala` | — | EDS bootstrap | n/a |
-| 40 | `data/style.css` | — | stylesheet | partial |
-| 41 | `po/` (79 locales, `POTFILES.in`) | — | translations | **no** |
-| 42 | `data/contacts.gresource.xml`, `data/icons/*`, `*.desktop.in.in`, `*.metainfo.xml.in.in` | — | packaging/resources | **no** |
+| Upstream | → lib/ | Kind | Status |
+|---|---|---|---|
+| `src/contacts-avatar.vala` | `lib/avatar.rb` (`ContactAvatar`) | avatar display widget | done (renamed to avoid clash with `Avatar` already used for photo data in `contact.rb`) |
+| `src/contacts-accounts-list.vala` | `lib/accounts_list.rb` | address-book picker list (used by setup window) | done |
+| `src/contacts-type-combo.vala` | `lib/type_combo_row.rb` | type-label combo row (Home/Work/Mobile/custom) | done |
 
-## Per-component detail for the gaps
+## Menus / actions / shortcuts
 
-Rewritten at the 2026-11-02 refresh. The four units the first survey listed as
-missing (`lib/avatar.rb`, `lib/type_combo_row.rb`, `lib/birthday_editor.rb`,
-`lib/accounts_list.rb`) now exist, as do the breakpoint, the loading spinner,
-the CSS provider and the alert dialogs. What follows is what is still open.
+| Upstream | → lib/ | Kind | Status |
+|---|---|---|---|
+| `ACTION_ENTRIES` in `src/contacts-app.vala` | `lib/main.rb` (`WINDOW_ACTIONS`) | window actions + accelerators | done |
+| `data/ui/contacts-shortcuts-dialog.blp` | `lib/shortcuts_dialog.rb` | shortcuts window content | done |
+| App menu / primary menu in `contacts-main-window.blp` | `lib/main.rb` | header-bar menu | needs confirmation against blueprint menu model (not yet scanned at widget level) |
 
-### Blocker — the gem entry point runs the scaffold, not the port
+## Data model / IO (non-UI, but required for component parity)
 
-`exe/gnome-contacts` is `GnomeContacts::Application.new.build.run`, and
-`lib/gnome_contacts.rb` requires `gnome_contacts/application`, which is still
-the fork scaffold: one `Adw.StatusPage` reading "The Ruby port has not been
-written yet." The real application is `lib/main.rb`, reachable only by running
-that file directly. Installing the gem and running `gnome-contacts` shows the
-placeholder. Either `exe/gnome-contacts` must point at `lib/main.rb`'s class or
-`lib/gnome_contacts/application.rb` must become a thin shim over it.
+| Upstream | → lib/ | Kind | Status |
+|---|---|---|---|
+| `src/core/contacts-contact.vala` + all `src/core/contacts-*-chunk.vala` (addresses, alias, avatar, bin, birthday, email-addresses, full-name, im-addresses, nickname, notes, phones, roles, structured-name, urls) | `lib/contact.rb` | contact data model (`TypedValue` + fields) | done — collapsed Folks per-field `Chunk` classes into one plain Ruby object, since there is no Folks binding |
+| `src/core/contacts-type-descriptor.vala`, `src/core/contacts-type-set.vala`, `src/core/contacts-vcard-type-mapping.vala` | `lib/type_set.rb` | field-type label set + vCard TYPE mapping | done |
+| `src/contacts-im-service.vala` | `lib/im_service.rb` | IM-service-id → display-name map | done |
+| `src/io/contacts-io.vala`, `contacts-io-parser.vala`, `contacts-io-vcard-parser.vala`, `contacts-io-export-operation.vala`, `contacts-io-vcard-export-operation.vala`, `contacts-io-parse-operation.vala`, `contacts-io-parse-main.vala` | `lib/vcard.rb` | vCard 4.0 (RFC 6350) parse/serialise | done |
+| `src/contacts-operation.vala`, `contacts-operation-list.vala`, `contacts-delete-operation.vala`, `contacts-link-operation.vala`, `contacts-unlink-operation.vala`, `contacts-import-operation.vala` | `lib/operations.rb` | undoable operations + undo stack | done — upstream's operations are async (EDS over D-Bus); file-backend equivalents run synchronously |
+| `src/contacts-chunk-filter.vala`, `contacts-chunk-empty-filter.vala`, `contacts-chunk-property-filter.vala`, `contacts-chunk-sorter.vala`, `contacts-manual-filter.vala`, `contacts-persona-filter.vala`, `contacts-persona-sorter.vala`, `contacts-individual-sorter.vala`, `contacts-individual-section-sorter.vala`, `contacts-query-filter.vala`, `contacts-contact-selection-model.vala` | `lib/contact_store.rb` | list filter/sort/selection chain | done — collapsed into one `ListStore -> FilterListModel -> SingleSelection` chain with Ruby-side sort (works around a `Gtk::CustomSorter`/`Gio::ListStore#sort` binding bug, per in-file comment) |
+| `src/contacts-settings.vala` + `src/org.gnome.Contacts.gschema.xml` | `lib/settings.rb` | app settings | done — backed by a JSON file under `XDG_CONFIG_HOME` instead of GSettings (no system schema install step) |
+| `src/contacts-esd-setup.vala` | `lib/accounts_list.rb` / `lib/setup_window.rb` (implicit) | EDS address-book provisioning on first run | **missing as its own file** — folded informally into the setup flow; EDS itself is out of scope (no EDS backend), but confirm the first-run gating logic (`did-initial-setup`) still matches |
+| `src/contacts-utils.vala` | — | misc helper functions | **not mapped to any single file** — needs a pass to confirm each helper landed somewhere (e.g. `lib/contact.rb`, `lib/vcard.rb`) rather than being silently dropped |
+| `src/contacts-shell-search-provider.vala` + `data/org.gnome.Contacts.search-provider.ini.in` + `data/org.gnome.Contacts.SearchProvider.service.in` | `lib/shell_search_provider.rb` | GNOME Shell search provider (D-Bus) | done |
+| Persistence backends (no direct upstream equivalent — upstream only has EDS) | `lib/backend.rb`, `lib/json_backend.rb`, `lib/vcard_backend.rb` | storage backends | done — port-specific, replaces Evolution Data Server |
 
-### Actions and accelerators
+## Data / resources (not Ruby components, but parity-relevant)
 
-| Gap | Upstream | Port |
+| Upstream | Kind | Status |
 |---|---|---|
-| `win.cancel-operation` | `{ "cancel-operation", cancel_operation_action, "s" }`; the link toast offers `_Cancel` against it (`contacts-main-window.vala:558`) | absent from `WINDOW_ACTIONS` |
-| `win.undo-operation` parameter | takes an `s` (the operation id) | takes no parameter (`lib/main.rb:54`) |
-| `win.sort-on` targets | `"firstname"` / `"surname"` (main-window.blp:13, 18) | `win.sort-on::first-name` / `::surname` (`lib/main.rb:369-370`) — the surname arm matches, the first-name arm does not |
-| `<Control>Delete` | `Shortcut` → `action(win.delete-marked-contacts)` (main-window.blp) | `'delete-marked-contacts' => []`, no accelerator |
+| `data/org.gnome.Contacts.gschema.xml` | GSettings schema | superseded by `lib/settings.rb`'s JSON store (see above) |
+| `data/contacts.gresource.xml` | GResource manifest | not applicable — Ruby port has no `.ui`/GResource bundle by house style |
+| `data/ui/*.blp` (9 files) | blueprint UI | each has a `lib/*.rb` counterpart listed above; all 9 are accounted for |
+| `data/icons/**/*.svg` (action icons: birthday, building, calendar, chat, external-link, image-round, map, note, photo-camera, qr-code, website; app icons) | icon assets | **not verified** — need to confirm each icon name used in upstream `.blp`/`.vala` (via `icon-name=`) has a matching available icon at runtime; not checked in this survey |
+| `data/style.css` | stylesheet | **not verified** — no corresponding check that port widgets apply the same CSS classes upstream's stylesheet targets |
+| `data/org.gnome.Contacts.metainfo.xml.in.in`, `.desktop.in.in`, `.service.in` | app metadata/registration | out of scope for a gem port; not applicable |
+| `po/*.po` (89 locale files) + `po/POTFILES.in` | translation catalogue | **not started** — no `po/` directory, no gettext wiring in `lib/`; this is the subject of a separate `translation-parity` pass, flagged here for visibility |
+| `tests/` (core chunk tests, vcard tests) | upstream test suite | for `test-parity` pass, not this inventory |
 
-### Still-absent widgets
+## Gaps and open questions surfaced by this survey
 
-- **The GOA button in Preferences.** `contacts-preferences-window.vala:26-52`: an `Adw.ButtonContent` labelled "_Online Accounts", tooltip "Open the Online Accounts panel in Settings", on a `Gtk.Button` with the `pill` class, firing `launch-panel` on `org.gnome.Settings` over D-Bus. No counterpart in `lib/preferences_dialog.rb`.
-- **The camera button in the avatar selector.** `camera_button` "_Take a Picture…" and its `Gtk.ActionBar` host. Absent by design — no XDG portal binding in ruby-gnome — and documented as such in `lib/avatar_selector.rb`.
-- **The editor "show more" revealers.** Upstream puts an `Adw.ButtonRow` behind two nested `Gtk.Revealer`s on each multi-value group; `lib/contact_editor.rb` always shows every row.
-- **Sheet persona-store headings.** Upstream inserts a `Gtk.Label` when consecutive chunks come from different personas; the port has no equivalent.
-- **List-row gestures.** Upstream's rows carry a `Gtk.GestureClick` (secondary button) and a `Gtk.GestureLongPress` to enter selection mode; `lib/contact_list.rb` attaches neither.
+1. **Dead scaffold code**: `lib/gnome_contacts/application.rb`, `lib/gnome_contacts.rb`,
+   and `exe/gnome-contacts` are the original scaffold's placeholder app (a window
+   with a status page) and are not reachable from the real entry point
+   (`exe/gnome-contacts-rb`, which boots `App` from `lib/main.rb`). They should
+   either be deleted or wired to delegate to `App`, so the gem's declared
+   executable list (`spec.executables = ["gnome-contacts-rb"]` in the gemspec)
+   doesn't silently keep a second, unported entry point around.
+2. **`src/contacts-utils.vala`** has no single corresponding `lib/*.rb` and was
+   not traced helper-by-helper in this pass — needs a follow-up read to confirm
+   its functions landed somewhere rather than being dropped.
+3. **`src/contacts-esd-setup.vala`** (EDS-specific first-run address-book setup)
+   has no dedicated port file; the first-run gating (`did-initial-setup`) and
+   address-book listing appear to be covered by `lib/setup_window.rb` and
+   `lib/accounts_list.rb`, but this was not verified line-by-line against the
+   Vala source.
+4. **Icon assets and `data/style.css`** were not checked for parity — upstream
+   ships 11 custom scalable action icons plus app icons and a stylesheet that
+   targets specific CSS classes; no check was done that the port's widgets use
+   matching icon names/CSS classes.
+5. **Header-bar / primary menu model** in `contacts-main-window.blp` was not
+   scanned at the widget/menu-item level against `lib/main.rb`; only the
+   window-action list was confirmed.
+6. **`po/` / translation catalogue**: entirely unaddressed; upstream ships 89
+   locale `.po` files plus `POTFILES.in`/`POTFILES.skip`, and the port has no
+   gettext integration at all.
 
-### Chrome
+## Summary
 
-- **`data/style.css` — partial.** `lib/main.rb:298` installs a `Gtk::CssProvider`, but by its own comment only the rules whose classes the port actually applies were carried over. Upstream's per-property editor selectors (`contacts-editor-property`, `contacts-editor-address`, `contacts-persona-editor`, `contacts-property-icon`, `contacts-cutout-button`) have no port counterpart to style.
-- **`po/` — absent.** No `po/` directory, no gettext calls, every string an English literal. Upstream ships 78 locales plus `POTFILES.in` over 13 `.blp` and 30 `.vala` files. This is the single largest remaining parity gap by volume.
-- **Packaging data — absent.** No `data/`: no `.desktop`, no metainfo, no app icons, no GResource. The port needs no GResource, but the desktop file and icon are user-facing.
-- **Tests — absent.** `spec/` holds only `spec_helper.rb` and a README; no component has a spec.
-
-## Repeaters and conditionals
-
-- **Contact rows** — `contact_list.rb` `list_factory`, one per contact in the selection model; each row carries a `Gtk.CheckButton.selection-mode` revealed only in selection mode, plus upstream's `Gtk.GestureClick` (secondary) and `Gtk.GestureLongPress`, which the port does not attach.
-- **Section headers** — upstream's `header_factory` builds one `Gtk.Label.heading.dim-label` per initial letter; the port reproduces it in `contact_list.rb:228`.
-- **Editor field rows** — `contact_editor.rb` keeps one blank `Adw.EntryRow` at the end of every multi-value group; typing appends another. Upstream does the same, plus an `Adw.ButtonRow` "show more" behind two nested `Gtk.Revealer`s that the port does not have.
-- **Sheet field groups** — upstream adds a group only for chunks the contact has, and inserts a `Gtk.Label` persona-store heading when consecutive chunks come from different personas. The port always renders every group with a placeholder row, and has no persona-store heading.
-- **Import dialog** — one `Adw.PreferencesGroup` per file, one `Adw.ActionRow` per parsed contact, one `Gtk.Label.error` per unreadable file; an `Adw.Spinner` while parsing.
-- **Address-book rows** — one per EDS source upstream, one per configured backend in the port.
+- Upstream Vala/C source files: 50 (`src/**/*.vala`, `src/**/*.c`, `src/**/*.h`)
+- Upstream blueprint UI files: 9 (`data/ui/*.blp`)
+- `lib/*.rb` files mapped to a specific upstream file: 29 of 33 non-scaffold,
+  non-infrastructure files (`accounts_list.rb`, `avatar.rb`, `avatar_selector.rb`,
+  `birthday_editor.rb`, `contact_editor.rb`, `contact_list.rb`, `contact_pane.rb`,
+  `contact.rb`, `contact_sheet.rb`, `contact_sheet_row.rb`, `contact_store.rb`,
+  `crop_dialog.rb`, `editable_avatar.rb`, `im_service.rb`, `import_dialog.rb`,
+  `link_suggestion_grid.rb`, `main.rb`, `operations.rb`, `preferences_dialog.rb`,
+  `qr_code_dialog.rb`, `settings.rb`, `setup_window.rb`, `shell_search_provider.rb`,
+  `shortcuts_dialog.rb`, `type_combo_row.rb`, `type_set.rb`, `vcard.rb`)
+- Port-only files with no upstream counterpart (new persistence layer,
+  replacing EDS): `backend.rb`, `json_backend.rb`, `vcard_backend.rb`
+- Stub/dead files not part of the port: `gnome_contacts.rb`,
+  `gnome_contacts/application.rb`
+- No user-facing upstream window/dialog/page is currently fully **missing**
+  from `lib/`; the gaps found are at the sub-component level (icons, CSS,
+  menu model, EDS-setup detail, `contacts-utils.vala`, translations) and are
+  listed above for follow-up passes.
