@@ -107,6 +107,16 @@ def rendered_checkboxes(list_view)
   end
 end
 
+# LinkSuggestionGrid's buttons_box is built as [reject_button, accept_button]
+# appended in that order; there is no direct accessor from the pane to the
+# grid object (only to the built widget tree), so this walks the tree the
+# same way `labels` and `rendered_checkboxes` above do.
+def suggestion_buttons(pane)
+  pane.suggestions_box.child&.first_child&.next_sibling&.next_sibling.then do |buttons_box|
+    [buttons_box&.first_child, buttons_box&.first_child&.next_sibling]
+  end
+end
+
 App.new(
   backend:         BACKEND,
   settings:        SETTINGS,
@@ -470,6 +480,91 @@ App.new(
           selector.camera_button.sensitive? == present
         end
       end
+    end
+
+    d.step('add two contacts that share an email, to trigger a link suggestion') do
+      store.call.add_contact(
+        name:            'Rosa Peters',
+        structured_name: { given: 'Rosa', family: 'Peters' },
+        emails:          [{ value: 'rosa@example.com', type: 'Work' }],
+      )
+      store.call.add_contact(
+        name:            'Rosa B Peters',
+        structured_name: { given: 'Rosa', family: 'B Peters' },
+        emails:          [{ value: 'rosa@example.com', type: 'Home' }],
+      )
+      app.contacts_list.update_visible_page
+      store.call.select_contact(store.call.contacts.find { |c| c.name == 'Rosa Peters' })
+    end
+
+    d.step('the link-suggestion grid appears under the sheet') do
+      d.check('a suggestion grid is shown') { !app.contact_pane.suggestions_box.child.nil? }
+      d.shot('17-link-suggestion')
+    end
+
+    # The suggestion grid is only just added to a not-yet-laid-out box this
+    # same tick, so it is not mapped yet; `button.activate` requires a mapped
+    # widget and is a no-op here, unlike every other `.activate` call in this
+    # script (those buttons live in widgets that have been on screen for a
+    # while). Emitting the signal directly is what an actual click delivers
+    # regardless of map state, and still exercises the real handler wiring.
+    d.step('reject the suggestion') { suggestion_buttons(app.contact_pane).first.signal_emit('clicked') }
+
+    d.step('the suggestion is dismissed') do
+      d.check('the suggestion grid is gone') { app.contact_pane.suggestions_box.child.nil? }
+    end
+
+    d.step('select the other side of the dismissed pair') do
+      store.call.select_contact(store.call.contacts.find { |c| c.name == 'Rosa B Peters' })
+    end
+
+    d.step('the dismissal is persisted both ways') do
+      d.check('the reverse pairing offers no suggestion either') do
+        app.contact_pane.suggestions_box.child.nil?
+      end
+      d.shot('18-suggestion-dismissed')
+    end
+
+    d.step('add a second pair sharing a phone number, to accept this time') do
+      store.call.add_contact(
+        name:            'Devon Clarke',
+        structured_name: { given: 'Devon', family: 'Clarke' },
+        phones:          [{ value: '+1 555 010 0100', type: 'Mobile' }],
+      )
+      store.call.add_contact(
+        name:            'D Clarke',
+        structured_name: { given: 'D', family: 'Clarke' },
+        phones:          [{ value: '+1 555 010 0100', type: 'Work' }],
+        emails:          [{ value: 'd.clarke@example.com', type: 'Work' }],
+      )
+      app.contacts_list.update_visible_page
+      store.call.select_contact(store.call.contacts.find { |c| c.name == 'Devon Clarke' })
+    end
+
+    d.step('the second pair also offers a suggestion') do
+      d.check('a suggestion grid is shown for the phone match') do
+        !app.contact_pane.suggestions_box.child.nil?
+      end
+    end
+
+    d.step('accept the suggestion') do
+      before = store.call.n_contacts
+      suggestion_buttons(app.contact_pane).last.signal_emit('clicked')
+      d.check('one contact disappeared (linked into the other)') { store.call.n_contacts == before - 1 }
+    end
+
+    d.step('the link merged both contacts into one, and it is undoable') do
+      store.call.contacts.find { |c| c.name == 'Devon Clarke' || c.name == 'D Clarke' }.then do |merged|
+        d.check('the merged contact kept a name') { !merged.nil? }
+        d.check('the merged contact kept the shared phone') do
+          merged&.phones&.any? { |p| p.value == '+1 555 010 0100' }
+        end
+        d.check("the merged contact gained the other side's email") do
+          merged&.emails&.any? { |e| e.value == 'd.clarke@example.com' }
+        end
+      end
+      d.check('the link is undoable') { !app.operations.last_reversable.nil? }
+      d.shot('19-link-accepted')
     end
   end
 end

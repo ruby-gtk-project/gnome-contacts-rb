@@ -78,20 +78,52 @@ via the editor's type rows). Covered only by the Minitest suite
 drive script: `lib/shell_search_provider.rb`, `lib/backend.rb`,
 `lib/vcard_backend.rb`'s own class, `lib/type_set.rb`.
 
-Not exercised by either suite in this round — genuine gaps, not claimed as
-covered:
+### Update: link-suggestion UI now driven live too
+
+A later pass closed the `lib/link_suggestion_grid.rb` / `lib/dont_suggest_store.rb`
+gap this report originally listed. The drive now:
+
+- adds two contacts sharing an email, selects one, and asserts the real
+  `LinkSuggestionGrid` the running `ContactPane` built appears under the
+  sheet (`contact_pane.suggestions_box.child`);
+- clicks its **No** button (found by walking the real widget tree — there is
+  no direct accessor from the pane to the grid object, only to what it
+  built) and asserts the grid disappears, then re-selects the other side of
+  the pair and asserts the dismissal was recorded for both directions
+  (`DontSuggestStore#may_suggest_link?`'s bidirectional check);
+- adds a second pair sharing a phone number, clicks **Yes**, and asserts
+  `Operations::LinkOperation` actually ran against the live store: one
+  contact disappears, the survivor keeps the shared phone, and gains the
+  other side's distinguishing email — and that the link is undoable.
+
+**Found while wiring this up, not assumed:** `Gtk::Button#activate` is a
+no-op immediately after a widget is first built into a box that has not yet
+had a layout pass (every other `.activate` call in this script targets a
+button that has been on screen for a while and works fine). The symptom was
+silent — `activate` returned normally, no exception, just no `clicked`
+handler run — so the first version of this step reported a false pass by
+checking a field the two test contacts already shared before any merge.
+Fixed two ways: the suggestion buttons are clicked with `signal_emit('clicked')`
+(what a real click delivers regardless of map state) instead of `.activate`,
+and the accept-path assertion was changed to check a field that only the
+*other* contact had, so a no-op click would actually fail it.
+
+Still not exercised by either suite — genuine gaps, not claimed as covered:
 
 - `lib/setup_window.rb` / `lib/accounts_list.rb` — the first-run address-book
   picker. It only appears when `setup_backends` is non-empty
   (`lib/main.rb:671`'s `setup_needed?`); the drive's `App.new` passes none,
   so the window is legitimately never reachable with one backend configured.
   Needs a second drive (or a dedicated step) that constructs `App` with a
-  non-empty `setup_backends` to open this window at all.
+  non-empty `setup_backends` to open this window at all. (`SetupWindow` is
+  exercised directly, off the main loop, by `test/test_app.rb`.)
 - `lib/avatar.rb`, `lib/avatar_selector.rb`, `lib/editable_avatar.rb`,
-  `lib/crop_dialog.rb` — avatar picking/cropping. Not driven.
-- `lib/link_suggestion_grid.rb`, `lib/dont_suggest_store.rb` — the
-  duplicate-contact linking suggestion UI. Not driven; would need two
-  near-duplicate contacts in the store to trigger a suggestion.
+  `lib/crop_dialog.rb` — avatar picking/cropping UI. `AvatarSelector` is
+  built and its camera-button sensitivity checked live by this drive script;
+  `CropDialog` and the file-picker path are exercised directly by
+  `test/test_app.rb`, not through a real click here (`Gtk::FileDialog` is
+  async and raises on cancel, so it cannot be driven by clicking — see the
+  testing skill's traps section).
 - `lib/im_service.rb`, `lib/type_combo_row.rb` — IM service lookups and the
   type-picker combo row are only indirectly touched (the editor's IM field is
   populated via fixtures in the Minitest suite, not clicked through here).
