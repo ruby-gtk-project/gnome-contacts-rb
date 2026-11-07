@@ -241,6 +241,10 @@
             pkgs.rubyPackages_3_4.gettext
             # The spec runner. The suite is plain RSpec, so this is enough.
             pkgs.rubyPackages_3_4.rspec
+            # test/test_*.rb is Minitest, driven via `rake test`; the root
+            # Gemfile names it but that Gemfile is kettle-jem's dev bundle and
+            # is not what the devShell's `gems` (nix/Gemfile) carries.
+            pkgs.rubyPackages_3_4.minitest
             # This machine may have no display server at all, so the shell
             # carries one it can start itself: `xvfb-run ruby exe/<app>` both
             # launches the app and is how test/drive_*.rb is run.

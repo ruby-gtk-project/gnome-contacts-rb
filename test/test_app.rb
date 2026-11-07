@@ -11,6 +11,8 @@ require 'shortcuts_dialog'
 require 'import_dialog'
 require 'setup_window'
 require 'vcard_backend'
+require 'avatar_selector'
+require 'crop_dialog'
 
 # End-to-end tests that build the real widget tree and drive it through the
 # window's GActions, the way a user's clicks and shortcuts would.
@@ -628,6 +630,110 @@ class TestApp < Minitest::Test
           refute_nil sheet.public_send(group), "#{group} should exist"
         end
       end
+    end
+  end
+
+  # --- Avatar editing ------------------------------------------------------
+
+  # The camera badge on the editor's avatar opens AvatarSelector; removing the
+  # avatar there and saving is the empty-state path through it.
+  def test_editable_avatar_opens_the_selector_and_removing_it_clears_the_avatar
+    in_app do
+      store.add_contact(name: 'Ada', avatar: { data: Base64.strict_encode64('fake-png-bytes'), media_type: 'image/png' })
+      store.select_contact(store.contacts.first)
+      app.window.activate_action('edit-contact', nil)
+
+      app.contact_pane.editor.editable_avatar.edit_button.signal_emit('clicked')
+      selector = app.window.visible_dialog
+      assert_kind_of AvatarSelector, selector
+
+      selector.remove_button.signal_emit('clicked')
+      assert_nil app.window.visible_dialog, 'the selector should close itself'
+
+      app.done_button.signal_emit('clicked')
+      assert_nil store.contacts.first.avatar, 'the removed avatar should reach the model'
+    end
+  end
+
+  # A stock icon picked from the grid is rendered to a PNG and handed back the
+  # same way a cropped photo would be.
+  def test_editable_avatar_assigns_a_stock_icon_from_the_grid
+    in_app do
+      store.add_contact(name: 'Ada')
+      store.select_contact(store.contacts.first)
+      app.window.activate_action('edit-contact', nil)
+
+      app.contact_pane.editor.editable_avatar.edit_button.signal_emit('clicked')
+      selector = app.window.visible_dialog
+      first_icon = selector.thumbnail_grid.first_child
+      refute_nil first_icon, 'the stock icon grid should have thumbnails'
+
+      selector.thumbnail_grid.signal_emit('child-activated', first_icon)
+      assert_nil app.window.visible_dialog, 'picking an icon closes the selector'
+
+      app.done_button.signal_emit('clicked')
+      refute_nil store.contacts.first.avatar, 'a stock icon should set the avatar'
+    end
+  end
+
+  # CropDialog is reached from AvatarSelector only through an async
+  # Gtk::FileDialog, which cannot be driven by clicking (see ruby-gtk-testing
+  # skill). Testing it directly, the way its own callback would call it,
+  # still exercises the crop math and the result it hands back.
+  def test_crop_dialog_emits_a_cropped_avatar
+    in_app do
+      pixbuf = GdkPixbuf::Pixbuf.new(colorspace: :rgb, has_alpha: false,
+                                      bits_per_sample: 8, width: 100, height: 100)
+      cropped = nil
+      dialog = CropDialog.new(pixbuf, ->(avatar) { cropped = avatar })
+      dialog.build
+      dialog.present(app.window)
+
+      dialog.select_button.signal_emit('clicked')
+
+      refute_nil cropped, 'selecting should hand back a cropped avatar'
+      assert_equal 'image/png', cropped.media_type
+    end
+  end
+
+  # --- Link suggestions ----------------------------------------------------
+
+  # Two contacts sharing an email address are offered as a link suggestion
+  # under the sheet; accepting it merges them, same as the bulk Link action.
+  def test_link_suggestion_grid_offers_and_accepting_merges_the_contacts
+    in_app do
+      store.add_contact(name: 'Ada Lovelace', emails: [{ value: 'ada@x.com', type: 'Work' }])
+      store.add_contact(name: 'A. Lovelace', emails: [{ value: 'ada@x.com', type: 'Home' }])
+      store.select_contact(store.contacts.first)
+
+      grid_box = app.contact_pane.suggestions_box.child
+      refute_nil grid_box, 'a link suggestion should be offered for the shared email'
+
+      accept_button = grid_box.last_child.last_child
+      assert_equal '_Yes', accept_button.label
+      accept_button.signal_emit('clicked')
+
+      assert_equal 1, store.n_contacts, 'accepting should merge the two contacts into one'
+      refute_nil app.operations.last_reversable, 'the merge should be undoable'
+    end
+  end
+
+  # Rejecting a suggestion for one contact must not silence it for the other
+  # member of the pair — only the contact currently showing remembers the
+  # dismissal, matching upstream's per-contact `rejected_suggestions`.
+  def test_rejecting_a_link_suggestion_removes_it_without_merging
+    in_app do
+      store.add_contact(name: 'Ada Lovelace', emails: [{ value: 'ada@x.com', type: 'Work' }])
+      store.add_contact(name: 'A. Lovelace', emails: [{ value: 'ada@x.com', type: 'Home' }])
+      store.select_contact(store.contacts.first)
+
+      grid_box = app.contact_pane.suggestions_box.child
+      reject_button = grid_box.last_child.first_child
+      assert_equal '_No', reject_button.label
+      reject_button.signal_emit('clicked')
+
+      assert_equal 2, store.n_contacts, 'rejecting must not merge anything'
+      assert_nil app.contact_pane.suggestions_box.child, 'the dismissed suggestion should disappear'
     end
   end
 end
