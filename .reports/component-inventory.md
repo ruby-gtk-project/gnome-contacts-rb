@@ -14,6 +14,7 @@ placeholder, not the port; `missing` = no `lib/*.rb` yet.
 
 | Upstream | → lib/ | Kind | Status |
 |---|---|---|---|
+| `src/main.vala` (process entry point: Gst/Intl init, builds `App`, `app.run`) | `exe/gnome-contacts-rb` | executable entry point | done |
 | `src/contacts-app.vala` | `lib/main.rb` (`App`) | application class | done |
 | `src/contacts-main-window.vala` + `data/ui/contacts-main-window.blp` | `lib/main.rb` (`App`) | main window | done |
 | `src/contacts-setup-window.vala` + `data/ui/contacts-setup-window.blp` | `lib/setup_window.rb` | first-run wizard window | done |
@@ -64,7 +65,9 @@ placeholder, not the port; `missing` = no `lib/*.rb` yet.
 
 | Upstream | → lib/ | Kind | Status |
 |---|---|---|---|
-| `src/core/contacts-contact.vala` + all `src/core/contacts-*-chunk.vala` (addresses, alias, avatar, bin, birthday, email-addresses, full-name, im-addresses, nickname, notes, phones, roles, structured-name, urls) | `lib/contact.rb` | contact data model (`TypedValue` + fields) | done — collapsed Folks per-field `Chunk` classes into one plain Ruby object, since there is no Folks binding |
+| `src/core/contacts-contact.vala`, `src/core/contacts-chunk.vala` (abstract base) + all `src/core/contacts-*-chunk.vala` (addresses, alias, avatar, bin, birthday, email-addresses, full-name, im-addresses, nickname, notes, phones, roles, structured-name, urls) | `lib/contact.rb` | contact data model (`TypedValue` + fields) | done — collapsed Folks per-field `Chunk` classes into one plain Ruby object, since there is no Folks binding |
+| `src/contacts-store.vala` (Folks-backed aggregator: base/sort/filter list-model chain, `address_books`, `quiescent`/`prepared` signals) | `lib/contact_store.rb` | contact store / aggregator | done for the list-model chain and address-book list — see row above for the filter/sort chain |
+| `src/contacts-store.vala`'s `dont_suggest_link` map, `read_dont_suggest_db`/`write_dont_suggest_db`, `may_suggest_link` (persists `~/.config/gnome-contacts/dont_suggest.db`, a flat `persona_uid persona_uid` pair list, so a dismissed link suggestion never reappears for that pair) | — | "don't suggest this link again" persistence | **missing** — `lib/link_suggestion_grid.rb` and `lib/contact_store.rb#link_suggestions_for` have no equivalent store, no dismiss action wired to it, and no file under `lib/` reads or writes any `dont_suggest` state; a link suggestion the user dismisses will come back on the next search/sort pass. Nobody has built this yet. |
 | `src/core/contacts-type-descriptor.vala`, `src/core/contacts-type-set.vala`, `src/core/contacts-vcard-type-mapping.vala` | `lib/type_set.rb` | field-type label set + vCard TYPE mapping | done |
 | `src/contacts-im-service.vala` | `lib/im_service.rb` | IM-service-id → display-name map | done |
 | `src/io/contacts-io.vala`, `contacts-io-parser.vala`, `contacts-io-vcard-parser.vala`, `contacts-io-export-operation.vala`, `contacts-io-vcard-export-operation.vala`, `contacts-io-parse-operation.vala`, `contacts-io-parse-main.vala` | `lib/vcard.rb` | vCard 4.0 (RFC 6350) parse/serialise | done |
@@ -114,6 +117,26 @@ placeholder, not the port; `missing` = no `lib/*.rb` yet.
 6. **`po/` / translation catalogue**: entirely unaddressed; upstream ships 89
    locale `.po` files plus `POTFILES.in`/`POTFILES.skip`, and the port has no
    gettext integration at all.
+7. **"Don't suggest this link again" persistence** (`dont_suggest_link`,
+   `read_dont_suggest_db`/`write_dont_suggest_db`, `may_suggest_link` in
+   upstream's `src/contacts-store.vala`) is missing outright. Upstream writes
+   dismissed persona-uid pairs to `~/.config/gnome-contacts/dont_suggest.db`
+   and filters them back out of `may_suggest_link` on every future suggestion
+   pass. No file under `lib/` stores this, no dismiss action in
+   `lib/link_suggestion_grid.rb` writes to it, and
+   `lib/contact_store.rb#link_suggestions_for` does not consult it, so a
+   dismissed duplicate-contact suggestion in this port reappears the next
+   time the list resorts or refilters. This was never built, not simplified
+   or dropped by a design decision — it needs a port file (most naturally a
+   small `lib/dont_suggest_store.rb` or a method added to
+   `lib/contact_store.rb`) that persists the pairs and a wired-up dismiss
+   action on the suggestion grid.
+8. **`src/contacts-store.vala` and `src/main.vala`** were not named anywhere
+   in the previous version of this inventory despite being real upstream
+   source files; both are now mapped above (`contact_store.rb` and
+   `exe/gnome-contacts-rb` respectively) and `src/core/contacts-chunk.vala`
+   (the abstract `Chunk` base class) is now named explicitly alongside the
+   concrete chunk subclasses it maps from.
 
 ## Summary
 
@@ -143,7 +166,11 @@ placeholder, not the port; `missing` = no `lib/*.rb` yet.
   comment update in `avatar_selector.rb` noting what `Ashpd::Camera` does and
   does not provide (a presence check, not a capture) — see "remaining" in
   this round's report for what full integration of each would still need.
-- No user-facing upstream window/dialog/page is currently fully **missing**
-  from `lib/`; the gaps found are at the sub-component level (icons, CSS,
-  menu model, EDS-setup detail, translations) and are listed above for
-  follow-up passes.
+- No upstream **window, dialog or page** is fully missing from `lib/`. But one
+  real feature is missing outright, not simplified: the "don't suggest this
+  link again" persistence from `src/contacts-store.vala`
+  (`dont_suggest_link`/`read_dont_suggest_db`/`write_dont_suggest_db`/
+  `may_suggest_link`) has no file, no storage and no dismiss action anywhere
+  under `lib/` — see gap 7 above. The remaining gaps are at the
+  sub-component level (icons, CSS, menu model, EDS-setup detail,
+  translations) and are listed above for follow-up passes.
