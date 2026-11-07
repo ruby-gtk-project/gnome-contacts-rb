@@ -85,7 +85,7 @@ class ContactSheet
         rows_for(@contact.addresses, icon: 'mark-location-symbolic') do |address|
           ContactSheetRow.new(address.value, address.type, icon: 'mark-location-symbolic')
                          .add_button('map-symbolic', 'Show on the map') do
-                           open_uri("https://www.openstreetmap.org/search?query=#{URI.encode_www_form_component(address.value)}")
+                           open_uri(maps_uri(address.value))
                          end
         end.each { |row| group.add(row) }
       end
@@ -183,4 +183,12 @@ class ContactSheet
     end
 
     def absolute_url(url) = url.match?(%r{\A[a-z][a-z0-9+.-]*://}i) ? url : "https://#{url}"
+
+    # Ported from Address#to_maps_uri (src/core/contacts-addresses-chunk.vala):
+    # a "maps:q=..." URI that GNOME's handler registry resolves to whatever
+    # map application is installed, rather than hard-coding a web service.
+    # GLib.Uri.escape_string's default reserved-chars-allowed is empty, so
+    # everything but RFC 3986 unreserved characters is percent-encoded,
+    # including the space (as %20, never "+").
+    def maps_uri(address) = "maps:q=#{URI::DEFAULT_PARSER.escape(address, /[^A-Za-z0-9\-._~]/)}"
 end

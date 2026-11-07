@@ -316,10 +316,18 @@ class Contact < GLib::Object
     end
   end
 
+  # Ported from src/core/contacts-birthday-chunk.vala is_today(). February
+  # 29th birthdays read as "today" on February 28th of a non-leap year, to
+  # match evolution-data-server's Birthdays calendar behaviour:
+  # https://gitlab.gnome.org/GNOME/evolution-data-server/-/issues/88
   def birthday_today?
     @birthday.then do |bday|
       if bday.is_a?(Date)
-        Date.today.then { |today| bday.month == today.month && bday.day == today.day }
+        today = Date.today
+        same_day = bday.month == today.month && bday.day == today.day
+        leap_day_birthday = bday.month == 2 && bday.day == 29
+        falls_back_to_feb28 = today.month == 2 && today.day == 28 && !Date.leap?(today.year)
+        same_day || (leap_day_birthday && falls_back_to_feb28)
       end
     end
   end

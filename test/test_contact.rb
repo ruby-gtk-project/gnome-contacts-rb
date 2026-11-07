@@ -105,6 +105,26 @@ class TestContact < Minitest::Test
     assert_predicate build(birthday: Date.today.strftime('1900-%m-%d')), :birthday_today?
   end
 
+  # Ported from tests/core/test-birthday-chunk.vala test_leap_day_birthday:
+  # a Feb 29 birthday counts as "today" on Feb 28 of a non-leap year (to
+  # match evolution-data-server's Birthdays calendar), but NOT on Feb 28 of
+  # a leap year, since the real Feb 29 is still ahead that year.
+  def test_birthday_today_leap_day
+    contact = build(birthday: '2020-02-29')
+
+    Date.stub(:today, Date.new(2024, 2, 29)) do
+      assert_predicate contact, :birthday_today?
+    end
+
+    Date.stub(:today, Date.new(2024, 2, 28)) do
+      refute_predicate contact, :birthday_today?
+    end
+
+    Date.stub(:today, Date.new(2023, 2, 28)) do
+      assert_predicate contact, :birthday_today?
+    end
+  end
+
   private
 
     def build(**attrs) = Contact.from_h({ id: 'test' }.merge(attrs))
