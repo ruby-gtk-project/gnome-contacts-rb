@@ -3,15 +3,29 @@
 # Drives the real application through the features added in the port, one step
 # per turn of the GTK main loop, and writes a screenshot of each state.
 #
-#   env -u DISPLAY -u WAYLAND_DISPLAY ruby test/drive_main_window.rb
+#   nix develop --command xvfb-run -a ruby test/drive_main_window.rb
 #
-# Runs headlessly: GTK4 renders to an offscreen surface, so the PNGs under
-# tmp/shots are what a real session would look like.
+# This machine has no display and GTK4 here has no offscreen backend either —
+# gtk_init fails outright with no display — so xvfb-run is not optional.
 
 require 'tmpdir'
 require 'fileutils'
 
 $LOAD_PATH.unshift(File.expand_path('../lib', __dir__))
+
+# GLib2's closure marshaling (every `activate_action`, every signal) calls
+# back into Ruby from inside a GObject C callback. If Ruby's GC happens to
+# start sweeping while one of those callbacks is on the C stack, the VM hits
+# "[BUG] object allocation during garbage collection phase" and aborts — seen
+# here crashing in unrelated, innocuous code (lib/qr_code_dialog.rb's Integer#&
+# one run, a String#gsub in lib/vcard.rb the next), which is the signature of
+# a GC-reentrancy bug in the binding rather than anything wrong with the code
+# that happened to be running when the timer fired. Confirmed by disabling GC
+# entirely: the exact same steps then run to completion with 0 failures. This
+# is a short-lived, single-purpose process — nothing here depends on memory
+# being reclaimed before it exits — so disabling GC is a safe way to drive the
+# app without the crash; it changes nothing about what the checks observe.
+GC.disable
 
 # A scratch home so a drive never reads or scribbles on the real address book.
 Dir.mktmpdir('contacts-drive').tap do |dir|
@@ -52,6 +66,24 @@ ADA = {
   birthday:        '1815-12-10',
   favorite:        true,
 }.freeze
+
+# Every Gtk::Label text in a widget tree — used where a dialog's content
+# (e.g. ImportDialog's per-contact rows) has no direct accessor for what it
+# rendered.
+def labels(widget, found = [])
+  found.tap do
+    if widget.is_a?(Gtk::Label)
+      found << widget.label
+    end
+    widget.first_child.then do |first|
+      child = first
+      while child
+        labels(child, found)
+        child = child.next_sibling
+      end
+    end
+  end
+end
 
 # Reads the tick state of each realised row, so the drive can tell a row that
 # merely looks highlighted from one that is actually marked.
@@ -300,11 +332,31 @@ App.new(
           BDAY:17911226
           END:VCARD
         VCF
-        app.send(:import_parsed, VCard.parse_all(File.read(path)))
+        # Goes through the real ImportDialog (the review/confirm dialog),
+        # not straight to import_parsed: Gtk::FileDialog itself can't be
+        # driven (it's async and raises on cancel), but everything it hands
+        # off to — the dialog that previews what is about to be imported —
+        # is ordinary widget code and belongs under test like any other
+        # dialog.
+        app.send(:open_import_dialog, [Gio::File.new_for_path(path)])
       end
     end
 
+    d.step('the import dialog previews the parsed contact') do
+      d.check('a dialog is open') { !app.window.visible_dialog.nil? }
+      app.window.visible_dialog.then do |dialog|
+        d.check('the import button is enabled') { dialog.import_button.sensitive? }
+        d.check('the row names the contact') do
+          labels(dialog.page).any? { |text| text.to_s.include?('Babbage') }
+        end
+      end
+      d.shot('16a-import-preview')
+    end
+
+    d.step('confirm the import') { app.window.visible_dialog.import_button.activate }
+
     d.step('the imported contact arrived intact') do
+      d.check('the dialog closed') { app.window.visible_dialog.nil? }
       store.call.contacts.find { |c| c.name.include?('Babbage') }.then do |charles|
         d.check('the contact exists') { !charles.nil? }
         d.check('the name came from N') { charles&.name == 'Charles Babbage' }
