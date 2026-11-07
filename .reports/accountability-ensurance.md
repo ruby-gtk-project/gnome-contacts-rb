@@ -60,6 +60,40 @@ phrase. It should read as a missing GSettings schema and an explicit
 statement that the substitution was never validated key-for-key against
 `src/org.gnome.Contacts.gschema.xml`, not as an architecture note.
 
+## This round — the five hits above were rewritten, not just discussed
+
+A prior round of this report *described* the five hits in
+`component-inventory.md` and quoted what the rewrite should say, but never
+edited the file itself — the excuse language was still live in a committed
+report, un-rewritten, for however many rounds separated that write from this
+read. That is the exact failure this skill exists to catch: a document about
+the excuse is not the same as removing it, and a reader of
+`component-inventory.md` alone (not this file) would still have met "by
+design" and "out of scope" as filed decisions.
+
+Fixed this round, in place, in `component-inventory.md` itself:
+
+- Preferences dialog EDS toggle row — rewritten to the first-person admission
+  form, cited above.
+- `contacts-esd-setup.vala` row — "EDS itself is out of scope" rewritten to
+  name the unverified gating logic as a gap, first person.
+- GResource manifest row — this one genuinely is a non-gap under
+  `component-parity`'s own rules (house style, no `.ui`/GResource by design
+  across every port in this fleet), so it was not rewritten as an admission;
+  it was reworded away from "not applicable" to a located correspondence
+  statement, since even a legitimate non-gap should not be phrased as a
+  dismissal.
+- Metadata/`.desktop`/metainfo row — rewritten to the first-person admission
+  form, cited above.
+
+Re-ran `find-excuses.sh .` after the edits: zero hits remain in
+`component-inventory.md`. One more surfaced and was fixed in the same pass —
+`component-parity.md:75` referenced the old "by design" phrasing in a
+parenthetical rather than restating the gap; reworded to point at the fix
+instead of the stale language. `component-parity.md:67` ("acceptable" for
+the QR renderer substitution) was re-checked against the rule below and left
+as-is; see that section.
+
 ## This round's own reports — checked for the same failure
 
 Re-read `component-parity.md` and `test-parity.md` after writing them for the
@@ -76,38 +110,59 @@ exactly the mechanism the skill describes.
 
 ## The false-green risk in the runtime gate
 
-The task's stated gate — `drive_ok=true, 55 checks passed, 0 failed, covering
-26 components` — is real; it was re-run this round
+The task's stated gate this round — `drive_ok=true, 59 checks passed, 0
+failed, covering 13 components` — is real; re-run this round
 (`nix develop --command xvfb-run -a ruby test/drive_main_window.rb`) and
-reproduced exactly: `55 of 55 checks passed` / `DRIVE OK`. That is not a false
-claim on its own terms.
+reproduced exactly: `59 of 59 checks passed` / `DRIVE OK`. The unit suite was
+also re-run (`nix develop --command xvfb-run -a ruby` running every
+`test/test_*.rb`): `137 runs, 452 assertions, 0 failures, 0 errors, 0 skips`,
+also green. Neither of those is a false claim on its own terms.
 
 It is, however, at risk of being read as broader than it is, and this report
 exists partly to block that reading:
 
-- **It says nothing about translation.** 0 of the 26 components it drives
+- **"13 components" is `test/drive_main_window.rb`'s own count of the
+  `lib/*.rb` files it names directly, out of 31 non-scaffold files** — not a
+  claim that 13/13 upstream *windows* have parity, and `drive-test.md` says
+  so explicitly. A reader who sees "59/59, 13 components" and infers "the UI
+  layer has parity" has been misled by omission, not by any false statement
+  in the gate itself. `drive-test.md` also names, by file, what neither suite
+  exercises at all: `lib/setup_window.rb`/`lib/accounts_list.rb` (first-run
+  picker, unreachable with the drive's single-backend `App.new`),
+  `lib/avatar.rb`/`lib/avatar_selector.rb`/`lib/editable_avatar.rb`/
+  `lib/crop_dialog.rb` (avatar pick/crop), `lib/link_suggestion_grid.rb`/
+  `lib/dont_suggest_store.rb` (duplicate-link suggestions), and the IM/type
+  combo rows beyond fixture population. Those are unverified, not done — the
+  runtime gate passing says nothing about them one way or the other.
+- **It says nothing about translation.** None of the components it drives
   exercises a single translated string, because the port has none (see
-  `translation-parity.md`). A reader who sees "55/55, 26 components" and
-  infers "the UI layer has parity" has been misled by omission, not by any
-  false statement in the gate itself.
+  `translation-parity.md` — still no `po/` directory this round). A reader
+  who sees the gate pass and infers "the UI layer has parity" is wrong about
+  every string the app shows.
 - **It did not catch the leap-day birthday bug** (`component-parity.md` #2),
   because the drive script's fixture contacts don't include a Feb 29
   birthday and the drive doesn't advance the clock. A green integration
   drive and a wrong unit of logic coexist; the gate is real, and it is not
   sufficient, and no prior document said so.
-- **134/134 unit tests green** (`test-parity.md`) is in the same position:
-  real, and not evidence of parity with upstream's 38, because no one has
-  built the bijective census the `test-parity` skill requires. Citing "all
-  green" as if it answered "is it ported" would be the false-green pattern
-  this skill exists to catch; this round's reports take care to say "green
-  AND uncensused" rather than let the green stand in for the census.
+- **137/137 unit tests green** is in the same position: real, and not
+  evidence of parity with upstream's 38 Vala `Test.add_func` cases, because no
+  one has built the bijective census `test-parity.md` itself says is
+  "not established" — roughly 18 of the 38 upstream chunk property/is-empty
+  tests remain un-censused this round, not just un-ported. Citing "all green"
+  as if it answered "is it ported" would be the false-green pattern this
+  skill exists to catch; `test-parity.md` takes care to say "green AND
+  uncensused" rather than let the green stand in for the census.
 
 ## Verdict
 
-Not clean. Five excuse-pattern hits in `.reports/component-inventory.md`,
-two of them (lines 74/88, the preferences gap and the missing desktop/metainfo
-registration) covering real missing work, not merely infelicitous phrasing.
-Code itself is clean of excuse language. The runtime gate is genuine but is
-silent on translation entirely and blind to at least one confirmed logic bug
-— flagging that gap explicitly here so it isn't inherited as "the gate covers
-UI parity" by the next reader.
+Not clean. This round found and fixed four excuse-pattern hits that had
+survived un-rewritten in `component-inventory.md` across however many prior
+rounds flagged but never fixed them, plus one stale reference in
+`component-parity.md`. Code itself (`lib/`, `exe/`) is clean of excuse
+language, and no `PORTING.md` or `FINDINGS.md` exists to carry the pattern at
+the top level. The runtime gate and unit suite are both genuinely green on
+re-run, and both are narrower than a casual reading suggests: silent on
+translation entirely, blind to at least one confirmed logic bug, and resting
+on a test census that is explicitly incomplete rather than complete-and-green.
+That gap between "green" and "proven" is the finding this report exists to
+keep from being inherited as settled.

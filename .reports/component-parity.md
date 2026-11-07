@@ -72,8 +72,9 @@ report doesn't imply they were resolved:
 
 - `lib/preferences_dialog.rb` — upstream's preferences window lists every live
   EDS address-book source with its own enable/disable toggle; the port shows
-  only the single active backend. **Gap** (the inventory's own "by design"
-  phrasing for this row is itself flagged in `accountability-ensurance.md`).
+  only the single active backend. **Gap** — `component-inventory.md`'s row
+  for this was rewritten this round per `accountability-ensurance.md`, since
+  the previous "by design" phrasing read as sanction.
 - `lib/avatar_selector.rb` — upstream offers a camera/portal avatar source;
   the port has none. **Gap.**
 - `lib/qr_code_dialog.rb` — upstream renders the QR with `libqrencode`; the
