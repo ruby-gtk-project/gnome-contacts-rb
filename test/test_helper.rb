@@ -22,12 +22,19 @@ module TempData
   def setup
     super
     @tmpdir = Dir.mktmpdir('gnome-contacts-rb')
+    # ContactStore builds a DontSuggestStore with no explicit path when none
+    # is given (as App.new does), and that store's default path is under
+    # XDG_CONFIG_HOME. Redirecting it keeps a test run from ever reading or
+    # writing the developer's real ~/.config/ruby-contacts/dont_suggest.db.
+    @previous_xdg_config_home = ENV['XDG_CONFIG_HOME']
+    ENV['XDG_CONFIG_HOME'] = File.join(@tmpdir, 'config')
   end
 
   def teardown
     if @tmpdir && File.exist?(@tmpdir)
       FileUtils.remove_entry(@tmpdir)
     end
+    ENV['XDG_CONFIG_HOME'] = @previous_xdg_config_home
     super
   end
 

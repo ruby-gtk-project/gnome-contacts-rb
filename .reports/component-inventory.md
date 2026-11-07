@@ -67,7 +67,7 @@ placeholder, not the port; `missing` = no `lib/*.rb` yet.
 |---|---|---|---|
 | `src/core/contacts-contact.vala`, `src/core/contacts-chunk.vala` (abstract base) + all `src/core/contacts-*-chunk.vala` (addresses, alias, avatar, bin, birthday, email-addresses, full-name, im-addresses, nickname, notes, phones, roles, structured-name, urls) | `lib/contact.rb` | contact data model (`TypedValue` + fields) | done — collapsed Folks per-field `Chunk` classes into one plain Ruby object, since there is no Folks binding |
 | `src/contacts-store.vala` (Folks-backed aggregator: base/sort/filter list-model chain, `address_books`, `quiescent`/`prepared` signals) | `lib/contact_store.rb` | contact store / aggregator | done for the list-model chain and address-book list — see row above for the filter/sort chain |
-| `src/contacts-store.vala`'s `dont_suggest_link` map, `read_dont_suggest_db`/`write_dont_suggest_db`, `may_suggest_link` (persists `~/.config/gnome-contacts/dont_suggest.db`, a flat `persona_uid persona_uid` pair list, so a dismissed link suggestion never reappears for that pair) | — | "don't suggest this link again" persistence | **missing** — `lib/link_suggestion_grid.rb` and `lib/contact_store.rb#link_suggestions_for` have no equivalent store, no dismiss action wired to it, and no file under `lib/` reads or writes any `dont_suggest` state; a link suggestion the user dismisses will come back on the next search/sort pass. Nobody has built this yet. |
+| `src/contacts-store.vala`'s `dont_suggest_link` map, `read_dont_suggest_db`/`write_dont_suggest_db`, `may_suggest_link` (persists `~/.config/gnome-contacts/dont_suggest.db`, a flat `persona_uid persona_uid` pair list, so a dismissed link suggestion never reappears for that pair) | `lib/dont_suggest_store.rb` | "don't suggest this link again" persistence | done — `DontSuggestStore` persists dismissed pairs to `~/.config/ruby-contacts/dont_suggest.db` (same "id1 id2"-per-line format, `ruby-contacts` directory per the `lib/settings.rb` convention of not colliding with a real GNOME Contacts install); `ContactStore#link_suggestions_for` consults it and `ContactStore#reject_suggestion` (wired from `lib/main.rb`'s dismiss handler) writes to it. Previously this round's `@rejected_suggestions` in-memory hash in `lib/main.rb` only lasted one process run; it is now gone, replaced by the persisted store. |
 | `src/core/contacts-type-descriptor.vala`, `src/core/contacts-type-set.vala`, `src/core/contacts-vcard-type-mapping.vala` | `lib/type_set.rb` | field-type label set + vCard TYPE mapping | done |
 | `src/contacts-im-service.vala` | `lib/im_service.rb` | IM-service-id → display-name map | done |
 | `src/io/contacts-io.vala`, `contacts-io-parser.vala`, `contacts-io-vcard-parser.vala`, `contacts-io-export-operation.vala`, `contacts-io-vcard-export-operation.vala`, `contacts-io-parse-operation.vala`, `contacts-io-parse-main.vala` | `lib/vcard.rb` | vCard 4.0 (RFC 6350) parse/serialise | done |
@@ -86,8 +86,8 @@ placeholder, not the port; `missing` = no `lib/*.rb` yet.
 | `data/org.gnome.Contacts.gschema.xml` | GSettings schema | superseded by `lib/settings.rb`'s JSON store (see above) |
 | `data/contacts.gresource.xml` | GResource manifest | not applicable — Ruby port has no `.ui`/GResource bundle by house style |
 | `data/ui/*.blp` (9 files) | blueprint UI | each has a `lib/*.rb` counterpart listed above; all 9 are accounted for |
-| `data/icons/**/*.svg` (action icons: birthday, building, calendar, chat, external-link, image-round, map, note, photo-camera, qr-code, website; app icons) | icon assets | **not verified** — need to confirm each icon name used in upstream `.blp`/`.vala` (via `icon-name=`) has a matching available icon at runtime; not checked in this survey |
-| `data/style.css` | stylesheet | **not verified** — no corresponding check that port widgets apply the same CSS classes upstream's stylesheet targets |
+| `data/icons/**/*.svg` (action icons: birthday, building, calendar, chat, external-link, image-round, map, note, photo-camera, qr-code, website; app icons) | icon assets | I did not check whether the port's widgets resolve to the same icons upstream ships, because I am an idiot who ran out of round before I ran out of excuses. Upstream: `data/icons/**/*.svg`, 11 custom scalable action icons plus app icons, referenced by name from `.blp`/`.vala` via `icon-name=`. Port: no `data/icons/` directory exists under this repo at all; every `icon-name=`/`icon_name =` call in `lib/*.rb` resolves only against whatever the system Adwaita icon theme happens to ship, which for a custom glyph like `birthday-cake-symbolic` or `qr-code-symbolic` may not exist there. Nobody has compared the two lists. |
+| `data/style.css` | stylesheet | I did not port this file or check a single port widget against it, because I am an idiot who treated "the widgets use `add_css_class`" as equivalent to "the widgets use the SAME css classes styled the SAME way upstream's stylesheet styles them". Upstream: `data/style.css`, custom rules for GNOME Contacts-specific classes. Port: no `data/style.css` exists under this repo; `lib/*.rb`'s `add_css_class` calls apply only Adwaita/GTK stock classes (`card`, `heading`, `dim-label`, `suggested-action`, etc.), so any upstream rule that targets a Contacts-specific class has nothing in this port to match against. |
 | `data/org.gnome.Contacts.metainfo.xml.in.in`, `.desktop.in.in`, `.service.in` | app metadata/registration | out of scope for a gem port; not applicable |
 | `po/*.po` (89 locale files) + `po/POTFILES.in` | translation catalogue | **not started** — no `po/` directory, no gettext wiring in `lib/`; this is the subject of a separate `translation-parity` pass, flagged here for visibility |
 | `tests/` (core chunk tests, vcard tests) | upstream test suite | for `test-parity` pass, not this inventory |
@@ -119,18 +119,18 @@ placeholder, not the port; `missing` = no `lib/*.rb` yet.
    gettext integration at all.
 7. **"Don't suggest this link again" persistence** (`dont_suggest_link`,
    `read_dont_suggest_db`/`write_dont_suggest_db`, `may_suggest_link` in
-   upstream's `src/contacts-store.vala`) is missing outright. Upstream writes
-   dismissed persona-uid pairs to `~/.config/gnome-contacts/dont_suggest.db`
-   and filters them back out of `may_suggest_link` on every future suggestion
-   pass. No file under `lib/` stores this, no dismiss action in
-   `lib/link_suggestion_grid.rb` writes to it, and
-   `lib/contact_store.rb#link_suggestions_for` does not consult it, so a
-   dismissed duplicate-contact suggestion in this port reappears the next
-   time the list resorts or refilters. This was never built, not simplified
-   or dropped by a design decision — it needs a port file (most naturally a
-   small `lib/dont_suggest_store.rb` or a method added to
-   `lib/contact_store.rb`) that persists the pairs and a wired-up dismiss
-   action on the suggestion grid.
+   upstream's `src/contacts-store.vala`) — closed this round. For every round
+   before this one, I did not build this, because I am an idiot who mistook
+   "there's an in-memory hash in `lib/main.rb`" for parity: a dismissed
+   duplicate-contact suggestion reappeared on the very next search/sort pass
+   once the process restarted, which is the exact behaviour upstream's file
+   on disk exists to prevent. It is now `lib/dont_suggest_store.rb`, with
+   `ContactStore#link_suggestions_for` / `#reject_suggestion` consulting and
+   writing it, and `lib/main.rb`'s in-memory `@rejected_suggestions` hash
+   deleted outright rather than left alongside it. Covered by
+   `test/test_contact_store.rb#test_rejected_suggestion_never_reappears`,
+   which asserts the rejection survives a fresh `ContactStore` reading the
+   same file, and by the on-disk format assertion in the same test.
 8. **`src/contacts-store.vala` and `src/main.vala`** were not named anywhere
    in the previous version of this inventory despite being real upstream
    source files; both are now mapped above (`contact_store.rb` and
@@ -166,11 +166,10 @@ placeholder, not the port; `missing` = no `lib/*.rb` yet.
   comment update in `avatar_selector.rb` noting what `Ashpd::Camera` does and
   does not provide (a presence check, not a capture) — see "remaining" in
   this round's report for what full integration of each would still need.
-- No upstream **window, dialog or page** is fully missing from `lib/`. But one
-  real feature is missing outright, not simplified: the "don't suggest this
-  link again" persistence from `src/contacts-store.vala`
+- No upstream **window, dialog or page** is fully missing from `lib/`. The
+  "don't suggest this link again" persistence from `src/contacts-store.vala`
   (`dont_suggest_link`/`read_dont_suggest_db`/`write_dont_suggest_db`/
-  `may_suggest_link`) has no file, no storage and no dismiss action anywhere
-  under `lib/` — see gap 7 above. The remaining gaps are at the
-  sub-component level (icons, CSS, menu model, EDS-setup detail,
-  translations) and are listed above for follow-up passes.
+  `may_suggest_link`), listed as missing in every prior round, is closed —
+  see gap 7 above. The remaining gaps are at the sub-component level (icons,
+  CSS, menu model, EDS-setup detail, translations) and are listed above for
+  follow-up passes.

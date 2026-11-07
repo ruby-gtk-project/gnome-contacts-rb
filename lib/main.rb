@@ -142,7 +142,6 @@ class App
     @operations = Operations::OperationList.new
     @state = NORMAL
     @selection_mode = false
-    @rejected_suggestions = {}
   end
 
   def build
@@ -1170,10 +1169,11 @@ class App
       end
     end
 
-  # Only suggest links the user has not already dismissed for this contact.
+  # ContactStore#link_suggestions_for already excludes pairs the user has
+  # dismissed (persisted via DontSuggestStore), so this is a thin pass-through
+  # kept for the name callers use.
     def suggestions_for(contact)
       @store.link_suggestions_for(contact)
-            .reject { |other| @rejected_suggestions[contact.id]&.include?(other.id) }
     end
 
     def accept_suggestion(suggestion)
@@ -1191,7 +1191,7 @@ class App
     def reject_suggestion(suggestion)
       @store.selected_contact.then do |contact|
         if contact
-          (@rejected_suggestions[contact.id] ||= []) << suggestion.id
+          @store.reject_suggestion(contact, suggestion)
           contact_pane.show_contact(contact, suggestions: suggestions_for(contact))
         end
       end

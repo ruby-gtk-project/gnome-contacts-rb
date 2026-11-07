@@ -7,6 +7,7 @@ require_relative 'contact'
 require_relative 'backend'
 require_relative 'json_backend'
 require_relative 'vcard_backend'
+require_relative 'dont_suggest_store'
 
 # ContactStore is the data layer for the contacts application.
 #
@@ -36,12 +37,13 @@ class ContactStore
   attr_reader :backend, :list_store
   attr_accessor :sort_on_surname
 
-  def initialize(backend: nil, sort_on_surname: false)
+  def initialize(backend: nil, sort_on_surname: false, dont_suggest_store: nil)
     @backend = backend || Backends::JsonBackend.new
     @list_store = Gio::ListStore.new(Contact)
     @ordered = []
     @query = ''
     @sort_on_surname = sort_on_surname
+    @dont_suggest_store = dont_suggest_store || DontSuggestStore.new
   end
 
   def load
@@ -200,13 +202,21 @@ class ContactStore
 
   # Contacts that look like the same person as the given one: upstream
   # suggests linking when an email address, a phone number or the display name
-  # matches. Returns them most-similar first.
+  # matches. Returns them most-similar first, excluding any pair the user has
+  # already dismissed (see DontSuggestStore / #reject_suggestion).
   def link_suggestions_for(contact)
     @ordered.reject { |other| other.id == contact.id }
+            .select { |other| @dont_suggest_store.may_suggest_link?(contact.id, other.id) }
             .map { |other| [other, similarity(contact, other)] }
             .select { |_, score| score.positive? }
             .sort_by { |_, score| -score }
             .map(&:first)
+  end
+
+  # A port of upstream's `add_no_suggest_link`: persists the dismissal so the
+  # pair never reappears, across resorts/refilters and across runs.
+  def reject_suggestion(contact, suggestion)
+    @dont_suggest_store.add_no_suggest_link(contact.id, suggestion.id)
   end
 
   # An exact email match is the strongest signal, then a phone number, then an

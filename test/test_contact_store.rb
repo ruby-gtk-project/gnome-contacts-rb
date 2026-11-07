@@ -111,4 +111,37 @@ class TestContactStore < Minitest::Test
     store.add_contact(name: 'Ada')
     refute_predicate store, :empty?
   end
+
+  def test_link_suggestions_for_matches_on_email
+    contact = store.add_contact(name: 'Ada Lovelace', emails: [{ value: 'ada@analytical.engine', type: 'Work' }])
+    dupe = store.add_contact(name: 'Zoe Lovelace', emails: [{ value: 'ada@analytical.engine', type: 'Home' }])
+    assert_equal [dupe], store.link_suggestions_for(contact)
+  end
+
+  # A port of upstream's dont_suggest_link / may_suggest_link: once a
+  # suggestion is rejected it must never come back for that pair, including
+  # after the store that rejected it is gone.
+  def test_rejected_suggestion_never_reappears
+    dont_suggest_path = File.join(tmpdir, 'dont_suggest.db')
+    one = ContactStore.new(
+      backend:            Backends::JsonBackend.new(path: json_path),
+      dont_suggest_store: DontSuggestStore.new(path: dont_suggest_path),
+    )
+    contact = one.add_contact(name: 'Ada Lovelace', emails: [{ value: 'ada@x.com', type: 'Work' }])
+    dupe = one.add_contact(name: 'A. Lovelace', emails: [{ value: 'ada@x.com', type: 'Home' }])
+    assert_equal [dupe], one.link_suggestions_for(contact)
+
+    one.reject_suggestion(contact, dupe)
+    assert_empty one.link_suggestions_for(contact)
+
+    # A fresh store reading the same db file must still honour the rejection.
+    two = ContactStore.new(
+      backend:            Backends::JsonBackend.new(path: json_path),
+      dont_suggest_store: DontSuggestStore.new(path: dont_suggest_path),
+    )
+    two.load
+    two_contact = two.contacts.find { |c| c.id == contact.id }
+    assert_empty two.link_suggestions_for(two_contact)
+    assert_equal "#{contact.id} #{dupe.id}\n", File.read(dont_suggest_path)
+  end
 end
