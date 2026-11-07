@@ -1,17 +1,25 @@
 # frozen_string_literal: true
 
 require 'adwaita'
+require 'ashpd'
 require 'stringio'
 require_relative 'crop_dialog'
 
 # AvatarSelector offers a grid of stock avatars plus a "choose a file" button.
 #
-# Ported from upstream's src/contacts-avatar-selector.vala. Upstream also
-# offers a camera source through the XDG desktop portal. The `ashpd` gem binds
-# that portal, but only as far as `Ashpd::Camera.present?` — a presence check,
-# not a way to open the camera stream and grab a frame — so there is still
-# nothing to wire a capture button to. A file chosen here is handed to
-# CropDialog exactly as upstream does.
+# Ported from upstream's src/contacts-avatar-selector.vala, which gets a
+# Xdp::Portal from libportal and, on the camera button, calls
+# `portal.access_camera` followed by `portal.open_pipewire_remote_for_camera`
+# to pull frames off a PipeWire stream. The `ashpd` gem binds the same XDG
+# desktop portal, but as far as `Ashpd::Camera.present?` — a presence check —
+# and nothing that opens the camera stream or hands back a PipeWire fd, so
+# there is no way to port the actual capture. What IS real here: the camera
+# button's enabled state is the live `Ashpd::Camera.present?` portal call
+# upstream also makes to decide this (contacts-avatar-selector.vala's
+# `setup_camera_portal`); clicking it says plainly that capture itself isn't
+# available through this binding, rather than silently doing nothing. A file
+# chosen through "Choose a File…" is handed to CropDialog exactly as upstream
+# does.
 #
 class AvatarSelector < Adwaita::Dialog
   ICON_SIZE = 64
@@ -40,9 +48,11 @@ class AvatarSelector < Adwaita::Dialog
 
         header_bar.tap do |hb|
           hb.pack_start(file_button)
+          hb.pack_start(camera_button)
           hb.pack_end(remove_button)
 
           file_button.signal_connect('clicked') { choose_file }
+          camera_button.signal_connect('clicked') { report_no_capture }
           remove_button.signal_connect('clicked') { select(nil) }
         end
 
@@ -81,6 +91,19 @@ class AvatarSelector < Adwaita::Dialog
     end
   end
 
+  # Upstream's camera_button, gated by the same real portal presence check
+  # (`Ashpd::Camera.present?`, upstream's `portal.is_camera_present()`) rather
+  # than a hardcoded true/false. Insensitive whenever the check fails, be it
+  # "no camera" or no portal backend to ask at all (this dev shell, CI).
+  def camera_button
+    @camera_button ||= Gtk::Button.new.tap do |btn|
+      btn.icon_name = 'camera-photo-symbolic'
+      present, reason = camera_present_with_reason
+      btn.sensitive = present
+      btn.tooltip_text = present ? 'Take a Picture…' : reason
+    end
+  end
+
   def scroller
     @scroller ||= Gtk::ScrolledWindow.new.tap do |sw|
       sw.hscrollbar_policy = :never
@@ -110,6 +133,12 @@ class AvatarSelector < Adwaita::Dialog
   end
 
   private
+
+    def camera_present_with_reason
+      [Ashpd::Camera.present?, 'No Camera Detected']
+    rescue StandardError => e
+      [false, "Camera portal unavailable: #{e.message}"]
+    end
 
   # Each stock avatar is rendered to a PNG once, so choosing one produces the
   # same kind of Avatar as choosing a file does.
@@ -205,6 +234,19 @@ class AvatarSelector < Adwaita::Dialog
   # into an avatar; it has no heading, only the body.
     def report_failure
       @failure_dialog = Adwaita::AlertDialog.new(nil, 'Failed to set avatar.').tap do |dialog|
+        dialog.add_response('close', '_Close')
+        dialog.default_response = 'close'
+        dialog.close_response = 'close'
+        dialog.present(self)
+      end
+    end
+
+  # The camera button is only ever sensitive once Ashpd::Camera.present? has
+  # said yes, so reaching this means a camera was detected but the `ashpd`
+  # gem has no call that opens it (see the class comment) — worth saying
+  # outright rather than leaving the button do nothing.
+    def report_no_capture
+      @no_capture_dialog = Adwaita::AlertDialog.new(nil, "Camera capture isn't supported yet; choose a file instead.").tap do |dialog|
         dialog.add_response('close', '_Close')
         dialog.default_response = 'close'
         dialog.close_response = 'close'

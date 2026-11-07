@@ -18,6 +18,7 @@ require 'optparse'
 require_relative '../lib/main'
 require_relative '../lib/json_backend'
 require_relative '../lib/vcard_backend'
+require_relative '../lib/eds_backend'
 require_relative '../lib/settings'
 require_relative '../lib/setup_window'
 
@@ -65,8 +66,10 @@ Settings.new.then do |settings|
       startup_contact_id: options[:individual],
       startup_email:      options[:email],
             # On first run the setup wizard offers these instead of opening
-            # straight into the main window.
-      setup_backends:     BACKENDS.values.map(&:call),
+            # straight into the main window. Real EDS address books already
+            # configured on the system (if any) are listed too, read-only —
+            # see Backends::EdsBackend.
+      setup_backends:     BACKENDS.values.map(&:call) + Backends::EdsBackend.discover,
     ).build.run
   end
 end

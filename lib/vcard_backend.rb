@@ -2,6 +2,7 @@
 
 require 'fileutils'
 require 'securerandom'
+require 'ashpd'
 require_relative 'backend'
 require_relative 'vcard'
 
@@ -49,16 +50,30 @@ module Backends
       end
     end
 
+    # Upstream never deletes contact files itself — EDS owns the address
+    # book and does its own removal. The nearest equivalent for a port that
+    # stores one file per contact is the XDG trash portal (`ashpd`), which
+    # moves the file through the desktop's Trash rather than unlinking it
+    # outright; File.delete is the fallback for when the portal is
+    # unavailable (no xdg-desktop-portal running, as in this dev shell and
+    # in CI).
     def delete(id)
       vcard_path(id).then do |path|
         if File.exist?(path)
-          File.delete(path)
+          trash_or_delete(path)
         end
         !File.exist?(path)
       end
     end
 
     private
+
+      def trash_or_delete(path)
+        Ashpd::Trash.file(path)
+      rescue StandardError => e
+        warn "Could not send #{path} to trash via the portal (#{e.message}); deleting it directly"
+        File.delete(path)
+      end
 
       def default_path
         File.join(

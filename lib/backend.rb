@@ -63,6 +63,13 @@ module Backends
       raise NotImplementedError, "#{self.class}#location must be implemented"
     end
 
+    # The GNOME Online Accounts account id backing this address book, or nil
+    # when the book is not GOA-provisioned (every backend this port ships
+    # today). Upstream reads this off the E.Source's SOURCE_EXTENSION_GOA
+    # extension (contacts-accounts-list.vala); a backend tied to a real GOA
+    # account overrides this with that id.
+    def goa_account_id = nil
+
     protected
 
       def generate_id = SecureRandom.uuid

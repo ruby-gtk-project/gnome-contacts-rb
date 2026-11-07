@@ -3,6 +3,8 @@
 require 'gtk4'
 require 'date'
 require 'base64'
+require 'glycin'
+require 'libglycin-gtk4'
 require_relative 'type_set'
 require_relative 'im_service'
 
@@ -197,10 +199,31 @@ class Avatar
   def to_h = { data: Base64.strict_encode64(data), media_type: media_type }
   def empty? = data.to_s.empty?
 
-  # Gdk::Texture.new accepts a GLib::Bytes of encoded image data directly;
-  # there is no new_from_bytes in these bindings.
+  # Decodes through glycin, the sandboxed image loader upstream uses (via
+  # Folks handing it a GLoadableIcon) for exactly this: turning untrusted
+  # bytes into a texture without running the format decoder in-process.
+  #
+  # Two binding quirks, both confirmed against glycin 1.0.0 /
+  # libglycin-gtk4 1.0.1 at the typelib versions this flake pins:
+  #
+  #   * Gly::Loader.new must take `bytes` POSITIONALLY. The keyword form
+  #     `Gly::Loader.new(bytes: ...)` that the loader's own error message
+  #     advertises as a valid signature raises ArgumentError anyway — a
+  #     collision between the gem's bootstrap class (also named
+  #     `Gly::Loader`, see glycin/loader.rb) and the real GI class of the
+  #     same name it loads over itself (the "already initialized constant
+  #     Gly::Loader" warning at require time) leaves the keyword-argument
+  #     overload unreachable.
+  #   * Image#get_specific_frame takes no usable argument from Ruby (it
+  #     wants a FrameRequest, and even the plain index form the typelib
+  #     advertises raises); #next_frame is the one that works for a static
+  #     image like an avatar.
+  #
+  # GlyGtk4.frame_get_texture is the one function the GTK4 integration gem
+  # exists to provide: a Gly::Frame -> Gdk::Texture conversion with no
+  # typelib::name collision version apparent.
   def texture
-    Gdk::Texture.new(GLib::Bytes.new(data))
+    GlyGtk4.frame_get_texture(Gly::Loader.new(GLib::Bytes.new(data)).load.next_frame)
   rescue StandardError, GLib::Error => e
     warn "Could not decode avatar: #{e.message}"
     nil

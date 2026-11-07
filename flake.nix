@@ -32,6 +32,13 @@
           libglycin-gtk4
           gnome-online-accounts
         ]
+        # glycin-loaders is not a typelib: it is the standalone sandbox-helper
+        # binary (one per format, e.g. glycin-image-rs for PNG/JPEG) plus the
+        # conf.d entries under share/glycin-loaders/2+/conf.d that Gly::Loader
+        # reads from XDG_DATA_DIRS to find them. Without it on XDG_DATA_DIRS,
+        # Gly::Loader#load fails at runtime with "No image loaders are
+        # configured." even though the Gly typelib itself loaded fine.
+        ++ (with pkgs; [ glycin-loaders ])
         # The Ruby `pkg-config` gem resolves `Requires.private` transitively and
         # hard-fails if any .pc in the chain is missing, so gtk4's whole private
         # closure has to be on PKG_CONFIG_PATH, not just its public deps.
@@ -210,7 +217,8 @@
               --prefix XDG_DATA_DIRS : "$out/share/gsettings-schemas/gnome-contacts-0.1.0" \
               --prefix XDG_DATA_DIRS : "${pkgs.gsettings-desktop-schemas}/share/gsettings-schemas/${pkgs.gsettings-desktop-schemas.name}" \
               --prefix XDG_DATA_DIRS : "${pkgs.gtk4}/share/gsettings-schemas/${pkgs.gtk4.name}" \
-              --prefix XDG_DATA_DIRS : "${pkgs.adwaita-icon-theme}/share"
+              --prefix XDG_DATA_DIRS : "${pkgs.adwaita-icon-theme}/share" \
+              --prefix XDG_DATA_DIRS : "${pkgs.glycin-loaders}/share"
 
             runHook postInstall
           '';
@@ -256,7 +264,7 @@
           # Icons, GSettings schemas and the GTK portal all resolve through
           # XDG_DATA_DIRS; without these the window opens with blank icons.
           shellHook = ''
-            export XDG_DATA_DIRS="${pkgs.gsettings-desktop-schemas}/share/gsettings-schemas/${pkgs.gsettings-desktop-schemas.name}:${pkgs.gtk4}/share/gsettings-schemas/${pkgs.gtk4.name}:${pkgs.adwaita-icon-theme}/share:$XDG_DATA_DIRS"
+            export XDG_DATA_DIRS="${pkgs.gsettings-desktop-schemas}/share/gsettings-schemas/${pkgs.gsettings-desktop-schemas.name}:${pkgs.gtk4}/share/gsettings-schemas/${pkgs.gtk4.name}:${pkgs.adwaita-icon-theme}/share:${pkgs.glycin-loaders}/share:$XDG_DATA_DIRS"
             # bundlerEnv installs the platform gem ashpd, so forcing the ruby
             # platform asks bundler for a gem which is not there.
             export BUNDLE_FORCE_RUBY_PLATFORM=false

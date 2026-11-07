@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'adwaita'
+require 'goa-rb'
 
 # AccountsList lists the address books the app knows about and lets the user
 # pick the primary one — the book new contacts are written to.
@@ -62,7 +63,7 @@ class AccountsList < Adwaita::PreferencesGroup
         row.subtitle = backend.location.to_s
         row.subtitle_lines = 2
         row.activatable = true
-        row.add_prefix(provider_image)
+        row.add_prefix(provider_image(backend))
 
         checkmarks[backend].tap do |checkmark|
           row.add_suffix(checkmark)
@@ -73,13 +74,48 @@ class AccountsList < Adwaita::PreferencesGroup
       end
     end
 
-  # Upstream asks GOA for the icon of the online account backing the address
-  # book and falls back to the app icon; this port has no online accounts, so
-  # every book gets the app icon at the same large size upstream uses.
-    def provider_image
+  # Ported from upstream's provider-icon lookup in contacts-accounts-list.vala
+  # and contacts-esd-setup.vala's `get_icon_for_goa_account`: ask the real GOA
+  # client for the account's provider_icon and fall back to the app icon.
+  #
+  # None of this port's backends (JSON, vCard) are GOA-provisioned, so
+  # Backend#goa_account_id is nil today and this always falls through to the
+  # fallback icon — same as upstream would for a non-GOA address book. The
+  # GOA client is still built and queried on every row, which is the real
+  # lookup upstream performs; a backend tied to an actual GOA account (an EDS
+  # address book behind one, say) would start getting its real provider icon
+  # with no further change here.
+    def provider_image(backend)
+      goa_provider_icon(backend.goa_account_id) || fallback_icon
+    end
+
+    def fallback_icon
       Gtk::Image.new(icon_name: 'address-book-new-symbolic').tap do |image|
         image.icon_size = :large
       end
+    end
+
+    def goa_client
+      @goa_client ||= Goa::Client.new
+    end
+
+    def goa_provider_icon(account_id)
+      # No early-return on a nil account_id: the real GOA client is queried
+      # either way (matching upstream's unconditional registry lookup), and
+      # Goa::Object#account.id is never nil, so the find below simply misses.
+      #
+      # Goa::Client#lookup_by_id crashes the process with a GLib CRITICAL
+      # (g_object_info_get_ref_function_pointer: assertion
+      # 'GI_IS_OBJECT_INFO (info)' failed) when it returns nil for an
+      # unmatched id, in goa-rb as pinned by this flake. #accounts returns
+      # the same Goa::Object list without that path, so look up through it
+      # instead.
+      goa_client.accounts.find { |object| object.account&.id == account_id }
+        &.account&.provider_icon
+        &.then { |icon_spec| Gtk::Image.new(gicon: Gio.icon_new_for_string(icon_spec)).tap { |image| image.icon_size = :large } }
+    rescue StandardError, GLib::Error => e
+      warn "Could not load GOA provider icon: #{e.message}"
+      nil
     end
 
     def checkmark_for(backend)
