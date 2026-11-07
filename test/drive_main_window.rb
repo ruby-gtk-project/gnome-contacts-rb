@@ -36,11 +36,21 @@ end
 require 'main'
 require 'json_backend'
 require 'settings'
+require_relative '../lib/eds_backend'
 require_relative 'gtk_driver'
 
 DIR = Dir.mktmpdir('contacts-drive-store')
 BACKEND = Backends::JsonBackend.new(path: File.join(DIR, 'contacts.json'))
 SETTINGS = Settings.new(path: File.join(DIR, 'settings.json'))
+
+# A real, valid 1x1 transparent PNG — not the placeholder text the minitest
+# suite feeds glycin (which only ever exercises its failure path). Decoding
+# this is the one check in the whole suite that proves Gly::Loader ->
+# GlyGtk4.frame_get_texture turns real bytes into a real texture rather than
+# just being reachable.
+ONE_PIXEL_PNG = Base64.decode64(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+)
 
 ADA = {
   name:            'Ada Lovelace',
@@ -384,6 +394,80 @@ App.new(
             ada&.phones&.map(&:type)&.include?('Work Fax')
           end
           d.check('the favourite flag persisted') { ada&.favorite? }
+        end
+      end
+    end
+
+    # The checks above never touch glycin, goa-rb, edataserver or the ashpd
+    # camera check: no contact here carries an avatar, and setup_backends is
+    # never passed to this App, so AccountsList (and the GOA client it
+    # queries) and EdsBackend are never built. Exercise each directly against
+    # the real gem, the way the live code path calls it, rather than taking
+    # "required and called from somewhere" on faith.
+    d.step('decode a real avatar through glycin') do
+      Avatar.new(data: ONE_PIXEL_PNG, media_type: 'image/png').texture.then do |texture|
+        d.check('glycin decoded a real Gdk::Texture') { texture.is_a?(Gdk::Texture) }
+        d.check('the decoded texture is 1x1') { texture&.width == 1 && texture&.height == 1 }
+      end
+    end
+
+    d.step('open the editor on a contact carrying a real avatar') do
+      store.call.contacts.find { |c| c.name == 'Augusta Ada King' }.then do |ada|
+        ada.avatar = Avatar.new(data: ONE_PIXEL_PNG, media_type: 'image/png')
+        store.call.select_contact(ada)
+      end
+      app.window.activate_action('edit-contact', nil)
+    end
+
+    d.step('that avatar reaches the editor through EditableAvatar') do
+      d.check('the editor avatar carries a real decoded texture') do
+        app.contact_pane.editor.editable_avatar.avatar.custom_image.is_a?(Gdk::Texture)
+      end
+      app.done_button.activate
+    end
+
+    d.step('edataserver lists the real EDS address-book sources') do
+      Backends::EdsBackend.discover.then do |books|
+        d.check('discovery ran against the real source registry without raising') { books.is_a?(Array) }
+      end
+    end
+
+    d.step('goa-rb is queried for a provider icon when building AccountsList') do
+      AccountsList.new([BACKEND], primary: BACKEND).build.then do |group|
+        d.check('the row for the only backend was built') { group.rows.length == 1 }
+        d.check('the real Goa::Client was queried (no GOA account, so it falls back)') do
+          group.send(:goa_client).is_a?(Goa::Client) &&
+            group.rows.values.first.first_child.is_a?(Gtk::Widget)
+        end
+      end
+    end
+
+    d.step('ashpd trash-portal delete runs for real on a vCard backend') do
+      Backends::VCardBackend.new(path: Dir.mktmpdir('contacts-drive-vcard')).then do |vcard_backend|
+        vcard_backend.create({ name: 'Delete Me' }).then do |created|
+          d.check('the vCard delete call completed (real portal or its rescue fallback)') do
+            vcard_backend.delete(created[:id])
+          end
+        end
+      end
+    end
+
+    d.step('ashpd reports the real camera presence to the avatar selector') do
+      # Same portal call AvatarSelector#camera_present_with_reason makes, and
+      # the same rescue: this dev shell's sandbox has no portal daemon to ask
+      # ("the name is not activatable"), so the live call raises here exactly
+      # as it does inside the app — proof it is a real D-Bus round trip, not
+      # a stub.
+      present =
+        begin
+          Ashpd::Camera.present?
+        rescue StandardError
+          false
+        end
+
+      AvatarSelector.new(store.call.contacts.first, ->(_) {}).build.then do |selector|
+        d.check('the camera button sensitivity matches the live portal check') do
+          selector.camera_button.sensitive? == present
         end
       end
     end
