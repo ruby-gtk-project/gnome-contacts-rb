@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>@app_id@</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-2.0-or-later</project_license>
+  <name>Contacts</name>
+  <summary>Manage your contacts</summary>
+  <description>
+    <p>
+      Contacts keeps and organizes your contacts information. You can create,
+      edit, delete and link together pieces of information about your
+      contacts.
+    </p>
+    <p>
+      This is a Ruby/GTK4/Libadwaita port of GNOME Contacts. It can store
+      contacts as local JSON or vCard files, and can read (but not yet write)
+      real Evolution Data Server address books already configured on the
+      system.
+    </p>
+  </description>
+
+  <supports>
+    <control>keyboard</control>
+    <control>pointing</control>
+    <control>touch</control>
+  </supports>
+  <requires>
+    <display_length compare="ge">360</display_length>
+  </requires>
+  <provides>
+    <binary>gnome-contacts-rb</binary>
+  </provides>
+  <url type="homepage">https://github.com/ruby-gtk-project/gnome-contacts-rb</url>
+  <url type="bugtracker">https://github.com/ruby-gtk-project/gnome-contacts-rb/issues</url>
+  <url type="vcs-browser">https://github.com/ruby-gtk-project/gnome-contacts-rb</url>
+  <launchable type="desktop-id">@app_id@.desktop</launchable>
+  <content_rating type="oars-1.1">
+    <content_attribute id="social-contacts">intense</content_attribute>
+  </content_rating>
+</component>
