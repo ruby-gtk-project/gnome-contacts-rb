@@ -128,7 +128,18 @@ module GtkDriver
       yield(self, app_object)
 
       app_object.build.tap do |application|
-        application.signal_connect('activate') { schedule(application) }
+        # Guarded to fire once: an app under test may legitimately call its
+        # own `app.activate` mid-run (e.g. finishing a first-run setup flow
+        # re-activates to open the main window), which would otherwise
+        # re-enter here and start a second, overlapping step schedule on top
+        # of the one already ticking.
+        scheduled = false
+        application.signal_connect('activate') do
+          unless scheduled
+            scheduled = true
+            schedule(application)
+          end
+        end
         arm_watchdog(application)
         application.run([])
       end

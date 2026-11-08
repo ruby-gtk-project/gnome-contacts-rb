@@ -671,7 +671,18 @@ class App
     def setup_needed? = !@settings['did-initial-setup'] && !Array(@setup_backends).empty?
 
   # Held in an ivar so the window is not collected while it is on screen.
+  #
+  # `app.hold` matters here beyond that: GApplication quits as soon as its
+  # last window closes unless something is holding it, and `finish` below
+  # closes this window before the deferred `app.activate` below gets a turn
+  # of the main loop to open the real one. Without the hold, the app can
+  # exit between those two points and the main window never opens — this is
+  # what the live drive of this flow (test/drive_setup_flow.rb) originally
+  # caught: the app quit right after the setup window closed, DRIVE OK and
+  # all, because the only widget on screen vanished a tick early.
     def run_setup
+      app.hold
+      @setup_held = true
       @setup_window = SetupWindow.new(app, @setup_backends, method(:finish_setup)).tap do |setup|
         setup.build
         if @present
@@ -692,6 +703,10 @@ class App
         # GLib assertion failure rather than a no-op.
         if app.registered?
           app.activate
+        end
+        if @setup_held
+          @setup_held = false
+          app.release
         end
         false
       end

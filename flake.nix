@@ -247,8 +247,6 @@
             # to support Ruby but only shells out to this, so without it
             # `xgettext --language=Ruby` fails.
             pkgs.rubyPackages_3_4.gettext
-            # The spec runner. The suite is plain RSpec, so this is enough.
-            pkgs.rubyPackages_3_4.rspec
             # test/test_*.rb is Minitest, driven via `rake test`; the root
             # Gemfile names it but that Gemfile is kettle-jem's dev bundle and
             # is not what the devShell's `gems` (nix/Gemfile) carries.
@@ -276,7 +274,7 @@
             echo "gnome-contacts devshell — ruby $(ruby -e 'print RUBY_VERSION')"
             echo "run the app:   xvfb-run ruby exe/gnome-contacts"
             echo "drive the app: xvfb-run ruby test/drive_*.rb"
-            echo "run the specs: ruby -e 'require \"rspec/core\"; exit RSpec::Core::Runner.run([\"--format\", \"progress\", \"--require\", \"spec_helper\", \"spec\"])'"
+            echo "run the tests: rake test"
           '';
         };
       });
