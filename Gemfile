@@ -59,14 +59,6 @@ eval_gemfile "gemfiles/modular/x_std_libs.gemfile"
 
 # See unlocked_deps appraisal for more details on irb inclusion
 gem "irb", "~> 1.17" # ruby >= 2.7
-# libadwaita bindings; pulls in gtk4, glib2, cairo and friends.
-# Building this gem needs libadwaita-1's development files on PKG_CONFIG_PATH.
-gem 'adwaita', '~> 4.3'
-
-# QR code generation for the "Share as QR Code" dialog. Upstream links against
-# libqrencode, which has no Ruby binding; rqrcode_core is pure Ruby and the
-# modules are painted with Cairo the same way upstream paints its pixel buffer.
-gem 'rqrcode_core', '~> 2.0'
 
 group :development, :test do
   gem 'minitest', '~> 5.0'
@@ -74,5 +66,3 @@ group :development, :test do
 end
 
 gem "gem_kit"
-gem "gtk4"
-gem "adwaita"
